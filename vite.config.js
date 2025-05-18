@@ -6,7 +6,7 @@ import vue from "@vitejs/plugin-vue";
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [vue()],
-  base: "/decor-studio-app/", // Добавляем базовый путь для GitHub Pages
+  base: "./", // Изменяем базовый путь для корректной работы в Telegram WebApp
   server: {
     host: "0.0.0.0", // Разрешаем доступ с любых IP
     port: 5173, // Порт, который будет использоваться
