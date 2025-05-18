@@ -2,10 +2,10 @@
 
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
-import tailwindcss from "@tailwindcss/vite";
 
+// https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [tailwindcss(), vue()],
+  plugins: [vue()],
   base: "/decor-studio-app/", // Добавляем базовый путь для GitHub Pages
   server: {
     host: "0.0.0.0", // Разрешаем доступ с любых IP
