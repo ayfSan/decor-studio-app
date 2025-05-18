@@ -6,6 +6,7 @@ import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   plugins: [tailwindcss(), vue()],
+  base: "/decor-studio-app/", // Добавляем базовый путь для GitHub Pages
   server: {
     host: "0.0.0.0", // Разрешаем доступ с любых IP
     port: 5173, // Порт, который будет использоваться
