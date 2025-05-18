@@ -6,6 +6,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Material Icons configuration */
+.material-symbols-outlined {
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+
 /* Custom base styles */
 @layer base {
   html {

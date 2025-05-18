@@ -69,43 +69,4 @@ export default {
 
 <style>
 @import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined");
-
-:root {
-  --primary-50: #f0f9ff;
-  --primary-100: #e0f2fe;
-  --primary-600: #0284c7;
-  --primary-700: #0369a1;
-}
-
-.bg-primary-50 {
-  background-color: var(--primary-50);
-}
-.bg-primary-100 {
-  background-color: var(--primary-100);
-}
-.text-primary-600 {
-  color: var(--primary-600);
-}
-.text-primary-700 {
-  color: var(--primary-700);
-}
-.hover\:bg-primary-50:hover {
-  background-color: var(--primary-50);
-}
-.bg-primary-600 {
-  background-color: var(--primary-600);
-}
-.hover\:bg-primary-700:hover {
-  background-color: var(--primary-700);
-}
-
-body {
-  font-family: "Inter", sans-serif;
-  background-color: white;
-  color: #1f2937;
-}
-
-.material-symbols-outlined {
-  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
-}
 </style>
