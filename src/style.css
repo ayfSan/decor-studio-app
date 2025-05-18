@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+/* Import fonts */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200");
+
+/* Custom base styles */
+@layer base {
+  html {
+    font-family: "Inter", system-ui, sans-serif;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900;
+  }
+}
+
+/* Custom components */
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors;
+  }
+
+  .card {
+    @apply bg-white rounded-lg shadow-sm p-6;
+  }
+
+  .input-field {
+    @apply w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-600 focus:ring-blue-600;
+  }
+}
+
+/* Custom utilities */
+@layer utilities {
+  .text-shadow {
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+}
