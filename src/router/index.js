@@ -5,13 +5,14 @@ import CashAccounting from "../components/views/CashAccounting.vue";
 import Members from "../components/views/Members.vue";
 import TodoList from "../components/views/TodoList.vue";
 import NotFound from "../components/views/NotFound.vue";
-import AccountingEvent from "../components/views/AccountingEvent.vue";
 import AccountCashflow from "../components/views/AccountCashflow.vue";
 import CategoryCashflow from "../components/views/CategoryCashflow.vue";
 import Cashflow from "../components/views/Cashflow.vue";
 import CategoryEvent from "../components/views/CategoryEvent.vue";
 import Customer from "../components/views/Customer.vue";
 import Venue from "../components/views/Venue.vue";
+import Document from "../components/views/Document.vue";
+import User from "../components/views/User.vue";
 
 //import Reports from '@/views/Reports.vue' //пока нет
 //import Settings from '@/views/Settings.vue' //пока нет
@@ -31,19 +32,13 @@ const routes = [
     component: Events,
     meta: { title: "Мероприятия" },
   },
-  {
-    path: "/events/cash_accounting",
-    name: "AccountingEvent",
-    component: AccountingEvent,
-    meta: { title: "Учет средств мероприятия" },
-  },
   //{ path: '/reports', component: Reports },
   //{ path: '/settings', component: Settings }
   {
     path: "/cash",
     name: "CashAccounting",
     component: CashAccounting,
-    meta: { title: "Учет средств" },
+    meta: { title: "Общий Учет средств" },
   },
   {
     path: "/members",
@@ -95,6 +90,18 @@ const routes = [
     meta: { title: "Места проведения" },
   },
   {
+    path: "/directory/documents",
+    name: "Document",
+    component: Document,
+    meta: { title: "Документы" },
+  },
+  {
+    path: "/admin/users",
+    name: "UserManagement",
+    component: User,
+    meta: { title: "Пользователи системы" },
+  },
+  {
     path: "/:pathMatch(.*)*",
     name: "NotFound",
     component: NotFound,
@@ -109,7 +116,7 @@ const router = createRouter({
 
 //перехватчик (хук) перед каждым переходом
 router.beforeEach((to, from, next) => {
-  const defaultTitle = "2d_secorstudio"; //стандартное название страницы по умолчанию
+  const defaultTitle = "2d_decorstudio"; //стандартное название страницы по умолчанию
   document.title = to.meta.title
     ? `${to.meta.title} | ${defaultTitle}`
     : defaultTitle; //автоподстановка названия страниц при переходе с добавлением константы

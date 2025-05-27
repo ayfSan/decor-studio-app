@@ -130,6 +130,35 @@
             >
             <span>Категории мероприятий</span>
           </router-link>
+          <router-link
+            to="/directory/documents"
+            class="nav-link"
+            :class="{
+              'active-link': $route.path.startsWith('/directory/documents'),
+            }"
+            @click="$emit('close-menu')"
+          >
+            <span class="material-symbols-outlined text-primary-600 mr-3"
+              >article</span
+            >
+            <span>Документы</span>
+          </router-link>
+        </div>
+
+        <!-- Администрирование -->
+        <div class="pt-3">
+          <h3 class="nav-section-title">Администрирование</h3>
+          <router-link
+            to="/admin/users"
+            class="nav-link"
+            :class="{ 'active-link': $route.path.startsWith('/admin/users') }"
+            @click="$emit('close-menu')"
+          >
+            <span class="material-symbols-outlined text-primary-600 mr-3"
+              >manage_accounts</span
+            >
+            <span>Пользователи</span>
+          </router-link>
         </div>
       </nav>
     </div>
