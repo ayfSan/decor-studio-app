@@ -6,6 +6,12 @@ import Members from "../components/views/Members.vue";
 import TodoList from "../components/views/TodoList.vue";
 import NotFound from "../components/views/NotFound.vue";
 import AccountingEvent from "../components/views/AccountingEvent.vue";
+import AccountCashflow from "../components/views/AccountCashflow.vue";
+import CategoryCashflow from "../components/views/CategoryCashflow.vue";
+import Cashflow from "../components/views/Cashflow.vue";
+import CategoryEvent from "../components/views/CategoryEvent.vue";
+import Customer from "../components/views/Customer.vue";
+import Venue from "../components/views/Venue.vue";
 
 //import Reports from '@/views/Reports.vue' //пока нет
 //import Settings from '@/views/Settings.vue' //пока нет
@@ -51,6 +57,42 @@ const routes = [
     component: TodoList,
     props: true,
     meta: { title: "Чек-лист" },
+  },
+  {
+    path: "/finance/accounts",
+    name: "AccountCashflow",
+    component: AccountCashflow,
+    meta: { title: "Счета ДС" },
+  },
+  {
+    path: "/finance/categories",
+    name: "CategoryCashflow",
+    component: CategoryCashflow,
+    meta: { title: "Категории ДС" },
+  },
+  {
+    path: "/finance/operations",
+    name: "Cashflow",
+    component: Cashflow,
+    meta: { title: "Движение ДС" },
+  },
+  {
+    path: "/directory/event-categories",
+    name: "CategoryEvent",
+    component: CategoryEvent,
+    meta: { title: "Категории мероприятий" },
+  },
+  {
+    path: "/directory/customers",
+    name: "Customer",
+    component: Customer,
+    meta: { title: "Клиенты" },
+  },
+  {
+    path: "/directory/venues",
+    name: "Venue",
+    component: Venue,
+    meta: { title: "Места проведения" },
   },
   {
     path: "/:pathMatch(.*)*",
