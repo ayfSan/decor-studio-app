@@ -35,16 +35,16 @@
 
         <div class="p-4 space-y-3 flex-grow">
           <p class="text-sm">
-            <strong class="font-medium">Категория ID:</strong>
-            {{ event_item.category_event_idcategory_event }}
+            <strong class="font-medium">Категория:</strong>
+            {{ getCategoryName(event_item.category_event_idcategory_event) }}
           </p>
           <p class="text-sm">
-            <strong class="font-medium">Место ID:</strong>
-            {{ event_item.venue_idvenue }}
+            <strong class="font-medium">Место:</strong>
+            {{ getVenueName(event_item.venue_idvenue) }}
           </p>
           <p class="text-sm">
-            <strong class="font-medium">Клиент ID:</strong>
-            {{ event_item.customer_idcustomer }}
+            <strong class="font-medium">Клиент:</strong>
+            {{ getCustomerName(event_item.customer_idcustomer) }}
           </p>
           <p class="text-sm">
             <strong class="font-medium">Стоимость:</strong>
@@ -120,40 +120,59 @@
           </div>
           <div>
             <label for="category_event_idcategory_event" class="label-form"
-              >Категория (ID)</label
+              >Категория</label
             >
-            <input
-              type="number"
+            <select
               id="category_event_idcategory_event"
               v-model.number="currentEvent.category_event_idcategory_event"
               required
               class="input-field"
-            />
-            <!-- TODO: Replace with select dropdown from fetched categories -->
+            >
+              <option :value="null" disabled>Выберите категорию</option>
+              <option
+                v-for="category in eventCategories"
+                :key="category.idcategory_event"
+                :value="category.idcategory_event"
+              >
+                {{ category.name }}
+              </option>
+            </select>
           </div>
           <div>
-            <label for="venue_idvenue" class="label-form">Место (ID)</label>
-            <input
-              type="number"
+            <label for="venue_idvenue" class="label-form">Место</label>
+            <select
               id="venue_idvenue"
               v-model.number="currentEvent.venue_idvenue"
               required
               class="input-field"
-            />
-            <!-- TODO: Replace with select dropdown from fetched venues -->
+            >
+              <option :value="null" disabled>Выберите место</option>
+              <option
+                v-for="venue in venuesList"
+                :key="venue.idvenue"
+                :value="venue.idvenue"
+              >
+                {{ venue.name }}
+              </option>
+            </select>
           </div>
           <div>
-            <label for="customer_idcustomer" class="label-form"
-              >Клиент (ID)</label
-            >
-            <input
-              type="number"
+            <label for="customer_idcustomer" class="label-form">Клиент</label>
+            <select
               id="customer_idcustomer"
               v-model.number="currentEvent.customer_idcustomer"
               required
               class="input-field"
-            />
-            <!-- TODO: Replace with select dropdown from fetched customers -->
+            >
+              <option :value="null" disabled>Выберите клиента</option>
+              <option
+                v-for="customer in customersList"
+                :key="customer.idcustomer"
+                :value="customer.idcustomer"
+              >
+                {{ customer.name }}
+              </option>
+            </select>
           </div>
           <div>
             <label for="cost" class="label-form">Стоимость</label>
@@ -196,10 +215,30 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
 
 const router = useRouter();
+
+// Demo data for related entities
+const eventCategories = ref([
+  { idcategory_event: 1, name: "Свадьба" },
+  { idcategory_event: 2, name: "Корпоратив" },
+  { idcategory_event: 3, name: "День рождения" },
+  { idcategory_event: 4, name: "Конференция" },
+]);
+
+const venuesList = ref([
+  { idvenue: 1, name: 'Ресторан "Золотой Дракон"' },
+  { idvenue: 2, name: 'Лофт "Атмосфера"' },
+  { idvenue: 3, name: 'Конференц-зал "Орион"' },
+]);
+
+const customersList = ref([
+  { idcustomer: 1, name: 'ООО "Праздник Плюс"' },
+  { idcustomer: 2, name: "Анна Петрова" },
+  { idcustomer: 3, name: "Иван Сидоров" },
+]);
 
 // Demo data - in real app, fetch from API
 const events = ref([
@@ -237,6 +276,24 @@ const defaultEvent = {
   customer_idcustomer: null,
   cost: 0.0,
   participants: "",
+};
+
+// Helper functions to get names by ID
+const getCategoryName = (id) => {
+  const category = eventCategories.value.find(
+    (cat) => cat.idcategory_event === id
+  );
+  return category ? category.name : "Не указана";
+};
+
+const getVenueName = (id) => {
+  const venue = venuesList.value.find((v) => v.idvenue === id);
+  return venue ? venue.name : "Не указано";
+};
+
+const getCustomerName = (id) => {
+  const customer = customersList.value.find((c) => c.idcustomer === id);
+  return customer ? customer.name : "Не указан";
 };
 
 function formatDate(dateString) {

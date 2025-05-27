@@ -16,7 +16,7 @@
         <thead>
           <tr>
             <th class="th-cell">ID</th>
-            <th class="th-cell">Событие (ID)</th>
+            <th class="th-cell">Событие</th>
             <th class="th-cell">Наименование</th>
             <th class="th-cell">Номер</th>
             <th class="th-cell">Дата</th>
@@ -37,7 +37,7 @@
             class="hover:bg-gray-50"
           >
             <td class="td-cell">{{ doc.iddocument }}</td>
-            <td class="td-cell">{{ doc.event_idevent }}</td>
+            <td class="td-cell">{{ getEventNameById(doc.event_idevent) }}</td>
             <td class="td-cell">{{ doc.name }}</td>
             <td class="td-cell">{{ doc.document_number }}</td>
             <td class="td-cell">{{ formatDate(doc.date) }}</td>
@@ -85,14 +85,22 @@
           class="grid grid-cols-1 md:grid-cols-2 gap-6"
         >
           <div>
-            <label for="event_idevent" class="label-form">Событие (ID)</label>
-            <input
-              type="number"
+            <label for="event_idevent" class="label-form">Событие</label>
+            <select
               id="event_idevent"
-              v-model="currentDocument.event_idevent"
+              v-model.number="currentDocument.event_idevent"
               required
               class="input-field"
-            />
+            >
+              <option :value="null" disabled>Выберите событие</option>
+              <option
+                v-for="event_item in eventsList"
+                :key="event_item.idevent"
+                :value="event_item.idevent"
+              >
+                {{ event_item.project_name }}
+              </option>
+            </select>
           </div>
           <div>
             <label for="name" class="label-form">Наименование</label>
@@ -163,7 +171,7 @@
 </template>
 
 <script setup>
-import { ref } from "vue";
+import { ref, computed } from "vue";
 
 const documents = ref([
   {
@@ -195,6 +203,13 @@ const documents = ref([
   },
 ]);
 
+// Demo data for events (ideally fetched or passed as prop)
+const eventsList = ref([
+  { idevent: 101, project_name: "Свадьба Анны и Петра" },
+  { idevent: 102, project_name: 'Юбилей компании "ТехноПрорыв"' },
+  { idevent: 103, project_name: "Конференция Разработчиков" },
+]);
+
 const isModalOpen = ref(false);
 const currentDocument = ref({});
 const isEditMode = ref(false);
@@ -206,6 +221,12 @@ const defaultDocument = {
   date: new Date().toISOString().slice(0, 10),
   type: "OTHER",
   file_path: "",
+};
+
+// Helper to get event name by ID
+const getEventNameById = (eventId) => {
+  const event = eventsList.value.find((e) => e.idevent === eventId);
+  return event ? event.project_name : "Неизвестное событие";
 };
 
 function formatDate(dateString) {

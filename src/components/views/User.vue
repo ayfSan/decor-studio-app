@@ -118,14 +118,13 @@
           </div>
           <div>
             <label for="role" class="label-form">Роль</label>
-            <input
-              type="text"
-              id="role"
-              v-model="currentUser.role"
-              class="input-field"
-              placeholder="Например, Администратор"
-            />
-            <!-- TODO: Можно заменить на select с предопределенными ролями -->
+            <select id="role" v-model="currentUser.role" class="input-field">
+              <option value="" disabled>Выберите роль</option>
+              <option value="Администратор">Администратор</option>
+              <option value="Менеджер">Менеджер</option>
+              <option value="Сотрудник">Сотрудник</option>
+              <!-- Добавьте другие роли по необходимости -->
+            </select>
           </div>
 
           <div v-if="isEditMode" class="sm:col-span-2">
@@ -199,7 +198,10 @@ function formatDate(dateString) {
 
 function openAddModal() {
   isEditMode.value = false;
-  currentUser.value = { ...defaultUser };
+  currentUser.value = {
+    ...defaultUser,
+    role: "",
+  };
   isModalOpen.value = true;
 }
 
