@@ -11,53 +11,87 @@
       </button>
     </div>
 
-    <div class="bg-white shadow-md rounded-lg overflow-x-auto">
-      <table class="min-w-full leading-normal">
-        <thead>
-          <tr>
-            <th class="th-cell">ID</th>
-            <th class="th-cell">Наименование/ФИО</th>
-            <th class="th-cell">Контактное лицо</th>
-            <th class="th-cell">Телефон</th>
-            <th class="th-cell">Telegram</th>
-            <th class="th-cell">Примечания</th>
-            <th class="th-cell">Действия</th>
-          </tr>
-        </thead>
-        <tbody class="text-gray-700">
-          <tr v-if="customers.length === 0">
-            <td colspan="7" class="td-cell text-center">
-              Нет данных для отображения
-            </td>
-          </tr>
-          <tr
-            v-for="customer in customers"
-            :key="customer.idcustomer"
-            class="hover:bg-gray-50"
-          >
-            <td class="td-cell">{{ customer.idcustomer }}</td>
-            <td class="td-cell">{{ customer.name_customer }}</td>
-            <td class="td-cell">{{ customer.contact_person }}</td>
-            <td class="td-cell">{{ customer.phone }}</td>
-            <td class="td-cell">{{ customer.telegram_username }}</td>
-            <td class="td-cell">{{ customer.notes }}</td>
-            <td class="td-cell">
+    <!-- Поиск -->
+    <div class="mb-6">
+      <input
+        type="text"
+        v-model="searchQuery"
+        placeholder="Поиск по имени, контактам..."
+        class="input-field w-full md:w-1/2 lg:w-1/3"
+      />
+    </div>
+
+    <div
+      v-if="paginatedItems.length === 0"
+      class="text-center py-10 text-gray-500"
+    >
+      <p v-if="customers.length === 0">Нет клиентов для отображения.</p>
+      <p v-else>
+        Клиенты по вашему запросу не найдены или нет данных на этой странице.
+      </p>
+    </div>
+
+    <div v-else>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div
+          v-for="customer in paginatedItems"
+          :key="customer.idcustomer"
+          class="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col"
+        >
+          <!-- Заголовок -->
+          <div class="p-4 bg-primary-50">
+            <h3 class="font-semibold text-lg text-primary-700">
+              {{ customer.name_customer || "Клиент без имени" }}
+            </h3>
+            <p class="text-xs text-gray-500 mt-1">
+              ID: {{ customer.idcustomer }}
+            </p>
+          </div>
+
+          <!-- Основной контент -->
+          <div class="p-4 space-y-2 flex-grow">
+            <p v-if="customer.contact_person" class="text-sm">
+              <strong class="font-medium">Конт. лицо:</strong>
+              {{ customer.contact_person }}
+            </p>
+            <p v-if="customer.phone" class="text-sm">
+              <strong class="font-medium">Телефон:</strong> {{ customer.phone }}
+            </p>
+            <p v-if="customer.telegram_username" class="text-sm">
+              <strong class="font-medium">Telegram:</strong>
+              {{ customer.telegram_username }}
+            </p>
+            <p
+              v-if="customer.notes"
+              class="text-sm text-gray-600 mt-2 pt-2 border-t border-gray-100"
+            >
+              <strong class="font-medium">Примечания:</strong><br />{{
+                customer.notes
+              }}
+            </p>
+          </div>
+
+          <!-- Футер с кнопками -->
+          <div class="p-4 border-t border-gray-200 bg-gray-50">
+            <div class="flex justify-end space-x-3">
               <button
                 @click="openEditModal(customer)"
-                class="text-primary-600 hover:text-primary-800 transition-colors duration-200 mr-3"
+                class="btn-icon-text text-primary-600 hover:text-primary-800"
               >
                 <span class="material-symbols-outlined text-lg">edit</span>
+                <span class="text-sm">Изменить</span>
               </button>
               <button
                 @click="confirmDeleteItem(customer)"
-                class="text-red-500 hover:text-red-700 transition-colors duration-200"
+                class="btn-icon-text text-red-500 hover:text-red-700"
               >
                 <span class="material-symbols-outlined text-lg">delete</span>
+                <span class="text-sm">Удалить</span>
               </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Modal for Add/Edit -->
@@ -139,7 +173,7 @@
 </template>
 
 <script setup>
-import { ref } from "vue";
+import { ref, computed, watch } from "vue";
 
 const customers = ref([
   {
@@ -160,9 +194,12 @@ const customers = ref([
   },
 ]);
 
+const searchQuery = ref("");
 const isModalOpen = ref(false);
 const currentCustomer = ref({});
 const isEditMode = ref(false);
+const itemsPerPage = 9;
+const currentPage = ref(1);
 
 const defaultCustomer = {
   name_customer: "",
@@ -171,6 +208,42 @@ const defaultCustomer = {
   telegram_username: "",
   notes: "",
 };
+
+const filteredCustomers = computed(() => {
+  if (!searchQuery.value) {
+    return customers.value;
+  }
+  const lowerSearchQuery = searchQuery.value.toLowerCase();
+  return customers.value.filter((customer) => {
+    const nameMatch = (customer.name_customer || "")
+      .toLowerCase()
+      .includes(lowerSearchQuery);
+    const contactPersonMatch = (customer.contact_person || "")
+      .toLowerCase()
+      .includes(lowerSearchQuery);
+    const phoneMatch = (customer.phone || "")
+      .toLowerCase()
+      .includes(lowerSearchQuery);
+    const telegramMatch = (customer.telegram_username || "")
+      .toLowerCase()
+      .includes(lowerSearchQuery);
+    return nameMatch || contactPersonMatch || phoneMatch || telegramMatch;
+  });
+});
+
+const totalPages = computed(() => {
+  return Math.ceil(filteredCustomers.value.length / itemsPerPage);
+});
+
+const paginatedItems = computed(() => {
+  const startIndex = (currentPage.value - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  return filteredCustomers.value.slice(startIndex, endIndex);
+});
+
+watch(searchQuery, () => {
+  currentPage.value = 1;
+});
 
 function openAddModal() {
   isEditMode.value = false;
@@ -197,7 +270,12 @@ function saveCustomer() {
       customers.value[index] = { ...currentCustomer.value };
     }
   } else {
-    customers.value.push({ ...currentCustomer.value, idcustomer: Date.now() }); // Replace with actual ID
+    // Simulate ID generation
+    currentCustomer.value.idcustomer =
+      customers.value.length > 0
+        ? Math.max(...customers.value.map((c) => c.idcustomer)) + 1
+        : 1;
+    customers.value.push({ ...currentCustomer.value });
   }
   closeModal();
 }
@@ -233,9 +311,12 @@ function deleteCustomer(customerToDelete) {
   @apply block text-sm font-medium text-gray-700 mb-1;
 }
 .btn-primary {
-  @apply px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg shadow-sm;
+  @apply bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-colors duration-200 flex items-center justify-center;
 }
 .btn-secondary {
-  @apply px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg shadow-sm;
+  @apply bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-lg shadow-md transition-colors duration-200 flex items-center justify-center;
+}
+.btn-icon-text {
+  @apply flex items-center space-x-1 transition-colors duration-200;
 }
 </style>

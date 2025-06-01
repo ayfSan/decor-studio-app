@@ -11,53 +11,84 @@
       </button>
     </div>
 
-    <div class="bg-white shadow-md rounded-lg overflow-x-auto">
-      <table class="min-w-full leading-normal">
-        <thead>
-          <tr>
-            <th class="th-cell">ID</th>
-            <th class="th-cell">Название</th>
-            <th class="th-cell">Адрес</th>
-            <th class="th-cell">Контактное лицо</th>
-            <th class="th-cell">Телефон</th>
-            <th class="th-cell">Примечания</th>
-            <th class="th-cell">Действия</th>
-          </tr>
-        </thead>
-        <tbody class="text-gray-700">
-          <tr v-if="venues.length === 0">
-            <td colspan="7" class="td-cell text-center">
-              Нет данных для отображения
-            </td>
-          </tr>
-          <tr
-            v-for="venue in venues"
-            :key="venue.idvenue"
-            class="hover:bg-gray-50"
-          >
-            <td class="td-cell">{{ venue.idvenue }}</td>
-            <td class="td-cell">{{ venue.name_venue }}</td>
-            <td class="td-cell">{{ venue.address }}</td>
-            <td class="td-cell">{{ venue.contact_person }}</td>
-            <td class="td-cell">{{ venue.phone }}</td>
-            <td class="td-cell">{{ venue.notes }}</td>
-            <td class="td-cell">
+    <!-- Поиск -->
+    <div class="mb-6">
+      <input
+        type="text"
+        v-model="searchQuery"
+        placeholder="Поиск по названию, адресу..."
+        class="input-field w-full md:w-1/2 lg:w-1/3"
+      />
+    </div>
+
+    <div
+      v-if="paginatedItems.length === 0"
+      class="text-center py-10 text-gray-500"
+    >
+      <p v-if="venues.length === 0">Нет мест для отображения.</p>
+      <p v-else>
+        Места по вашему запросу не найдены или нет данных на этой странице.
+      </p>
+    </div>
+
+    <div v-else>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div
+          v-for="venue in paginatedItems"
+          :key="venue.idvenue"
+          class="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col"
+        >
+          <!-- Заголовок -->
+          <div class="p-4 bg-primary-50">
+            <h3 class="font-semibold text-lg text-primary-700">
+              {{ venue.name_venue || "Место без названия" }}
+            </h3>
+            <p class="text-xs text-gray-500 mt-1">ID: {{ venue.idvenue }}</p>
+          </div>
+
+          <!-- Основной контент -->
+          <div class="p-4 space-y-2 flex-grow">
+            <p v-if="venue.address" class="text-sm">
+              <strong class="font-medium">Адрес:</strong> {{ venue.address }}
+            </p>
+            <p v-if="venue.contact_person" class="text-sm">
+              <strong class="font-medium">Конт. лицо:</strong>
+              {{ venue.contact_person }}
+            </p>
+            <p v-if="venue.phone" class="text-sm">
+              <strong class="font-medium">Телефон:</strong> {{ venue.phone }}
+            </p>
+            <p
+              v-if="venue.notes"
+              class="text-sm text-gray-600 mt-2 pt-2 border-t border-gray-100"
+            >
+              <strong class="font-medium">Примечания:</strong><br />{{
+                venue.notes
+              }}
+            </p>
+          </div>
+
+          <!-- Футер с кнопками -->
+          <div class="p-4 border-t border-gray-200 bg-gray-50">
+            <div class="flex justify-end space-x-3">
               <button
                 @click="openEditModal(venue)"
-                class="text-primary-600 hover:text-primary-800 transition-colors duration-200 mr-3"
+                class="btn-icon-text text-primary-600 hover:text-primary-800"
               >
                 <span class="material-symbols-outlined text-lg">edit</span>
+                <span class="text-sm">Изменить</span>
               </button>
               <button
                 @click="confirmDeleteItem(venue)"
-                class="text-red-500 hover:text-red-700 transition-colors duration-200"
+                class="btn-icon-text text-red-500 hover:text-red-700"
               >
                 <span class="material-symbols-outlined text-lg">delete</span>
+                <span class="text-sm">Удалить</span>
               </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Modal for Add/Edit -->
@@ -139,7 +170,7 @@
 </template>
 
 <script setup>
-import { ref } from "vue";
+import { ref, computed, watch } from "vue";
 
 const venues = ref([
   {
@@ -160,9 +191,12 @@ const venues = ref([
   },
 ]);
 
+const searchQuery = ref("");
 const isModalOpen = ref(false);
 const currentVenue = ref({});
 const isEditMode = ref(false);
+const itemsPerPage = 9;
+const currentPage = ref(1);
 
 const defaultVenue = {
   name_venue: "",
@@ -197,7 +231,12 @@ function saveVenue() {
       venues.value[index] = { ...currentVenue.value };
     }
   } else {
-    venues.value.push({ ...currentVenue.value, idvenue: Date.now() }); // Replace with actual ID
+    // Simulate ID generation
+    currentVenue.value.idvenue =
+      venues.value.length > 0
+        ? Math.max(...venues.value.map((v) => v.idvenue)) + 1
+        : 1;
+    venues.value.push({ ...currentVenue.value });
   }
   closeModal();
 }
@@ -212,6 +251,40 @@ function deleteVenue(venueToDelete) {
   venues.value = venues.value.filter(
     (v) => v.idvenue !== venueToDelete.idvenue
   );
+}
+
+const filteredVenues = computed(() => {
+  if (!searchQuery.value) {
+    return venues.value;
+  }
+  const lowerSearchQuery = searchQuery.value.toLowerCase();
+  return venues.value.filter((venue) => {
+    const nameMatch = (venue.name_venue || "")
+      .toLowerCase()
+      .includes(lowerSearchQuery);
+    const addressMatch = (venue.address || "")
+      .toLowerCase()
+      .includes(lowerSearchQuery);
+    return nameMatch || addressMatch;
+  });
+});
+
+const totalPages = computed(() => {
+  return Math.ceil(filteredVenues.value.length / itemsPerPage);
+});
+
+const paginatedItems = computed(() => {
+  const startIndex = (currentPage.value - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  return filteredVenues.value.slice(startIndex, endIndex);
+});
+
+watch(searchQuery, () => {
+  currentPage.value = 1;
+});
+
+function nextPage() {
+  // ... existing code ...
 }
 </script>
 
@@ -229,9 +302,12 @@ function deleteVenue(venueToDelete) {
   @apply block text-sm font-medium text-gray-700 mb-1;
 }
 .btn-primary {
-  @apply px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg shadow-sm;
+  @apply bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-colors duration-200 flex items-center justify-center;
 }
 .btn-secondary {
-  @apply px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg shadow-sm;
+  @apply bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-lg shadow-md transition-colors duration-200 flex items-center justify-center;
+}
+.btn-icon-text {
+  @apply flex items-center space-x-1 transition-colors duration-200;
 }
 </style>

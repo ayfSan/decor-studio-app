@@ -13,6 +13,8 @@ import Customer from "../components/views/Customer.vue";
 import Venue from "../components/views/Venue.vue";
 import Document from "../components/views/Document.vue";
 import User from "../components/views/User.vue";
+import EventDetail from "../components/views/EventDetail.vue";
+import Analytics from "../components/views/Analytics.vue";
 
 //import Reports from '@/views/Reports.vue' //пока нет
 //import Settings from '@/views/Settings.vue' //пока нет
@@ -32,8 +34,21 @@ const routes = [
     component: Events,
     meta: { title: "Мероприятия" },
   },
+  {
+    path: "/event/:eventId",
+    name: "EventDetail",
+    component: EventDetail,
+    props: true,
+    meta: { title: "Детали мероприятия" },
+  },
   //{ path: '/reports', component: Reports },
   //{ path: '/settings', component: Settings }
+  {
+    path: "/analytics",
+    name: "Analytics",
+    component: Analytics,
+    meta: { title: "Аналитика" },
+  },
   {
     path: "/cash",
     name: "CashAccounting",

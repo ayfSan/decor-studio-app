@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from "vue";
+import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
 
 const roles = [
@@ -49,6 +49,9 @@ const newMember = ref({
   email: "",
 });
 
+const isEditMemberModalOpen = ref(false);
+const currentEditMember = ref({});
+
 const router = useRouter();
 
 const addMember = () => {
@@ -68,11 +71,63 @@ const addMember = () => {
   showAddMemberForm.value = false;
 };
 
+function openEditMemberModal(member) {
+  currentEditMember.value = { ...member };
+  isEditMemberModalOpen.value = true;
+}
+
+function closeEditMemberModal() {
+  isEditMemberModalOpen.value = false;
+  currentEditMember.value = {};
+}
+
+function saveEditedMember() {
+  if (!currentEditMember.value.id) return;
+  const index = members.value.findIndex(
+    (m) => m.id === currentEditMember.value.id
+  );
+  if (index !== -1) {
+    members.value[index] = { ...currentEditMember.value };
+    console.log("Member updated (mock):", members.value[index]);
+  }
+  closeEditMemberModal();
+}
+
 const deleteMember = (id) => {
   if (confirm("Вы уверены, что хотите удалить этого участника?")) {
     members.value = members.value.filter((member) => member.id !== id);
   }
 };
+
+const sortKey = ref("lastName");
+const sortOrder = ref("asc");
+
+const sortedMembers = computed(() => {
+  return [...members.value].sort((a, b) => {
+    let valA = a[sortKey.value];
+    let valB = b[sortKey.value];
+
+    if (typeof valA === "string") valA = valA.toLowerCase();
+    if (typeof valB === "string") valB = valB.toLowerCase();
+
+    let comparison = 0;
+    if (valA > valB) {
+      comparison = 1;
+    } else if (valA < valB) {
+      comparison = -1;
+    }
+    return sortOrder.value === "asc" ? comparison : comparison * -1;
+  });
+});
+
+function setSortKey(key) {
+  if (sortKey.value === key) {
+    sortOrder.value = sortOrder.value === "asc" ? "desc" : "asc";
+  } else {
+    sortKey.value = key;
+    sortOrder.value = "asc";
+  }
+}
 </script>
 
 <template>
@@ -85,6 +140,40 @@ const deleteMember = (id) => {
       >
         <span class="material-symbols-outlined md:mr-2">person_add</span>
         <span class="hidden md:inline">Добавить участника</span>
+      </button>
+    </div>
+
+    <!-- Панель сортировки -->
+    <div
+      class="mb-6 bg-white p-4 rounded-lg shadow-sm flex flex-wrap items-center gap-4"
+    >
+      <span class="text-sm font-medium text-gray-700">Сортировать по:</span>
+      <button
+        @click="setSortKey('lastName')"
+        :class="['btn-sort', { 'active-sort': sortKey === 'lastName' }]"
+      >
+        Фамилии
+        <span v-if="sortKey === 'lastName'">{{
+          sortOrder === "asc" ? "&#9650;" : "&#9660;"
+        }}</span>
+      </button>
+      <button
+        @click="setSortKey('firstName')"
+        :class="['btn-sort', { 'active-sort': sortKey === 'firstName' }]"
+      >
+        Имени
+        <span v-if="sortKey === 'firstName'">{{
+          sortOrder === "asc" ? "&#9650;" : "&#9660;"
+        }}</span>
+      </button>
+      <button
+        @click="setSortKey('role')"
+        :class="['btn-sort', { 'active-sort': sortKey === 'role' }]"
+      >
+        Роли
+        <span v-if="sortKey === 'role'">{{
+          sortOrder === "asc" ? "&#9650;" : "&#9660;"
+        }}</span>
       </button>
     </div>
 
@@ -176,13 +265,13 @@ const deleteMember = (id) => {
     <!-- Список участников -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       <div
-        v-if="members.length === 0"
+        v-if="sortedMembers.length === 0"
         class="col-span-full text-center py-10 text-gray-500"
       >
         Нет участников для отображения.
       </div>
       <div
-        v-for="member_item in members"
+        v-for="member_item in sortedMembers"
         :key="member_item.id"
         class="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col"
       >
@@ -194,7 +283,6 @@ const deleteMember = (id) => {
               </h3>
               <p class="text-sm text-gray-600">{{ member_item.role }}</p>
             </div>
-            <!-- Здесь можно будет добавить кнопки редактирования -->
           </div>
 
           <div class="space-y-2 text-sm">
@@ -220,16 +308,116 @@ const deleteMember = (id) => {
             </a>
           </div>
         </div>
-        <div class="bg-gray-50 p-3 flex justify-end">
+        <div class="bg-gray-50 p-3 flex justify-end space-x-2">
+          <button
+            @click="openEditMemberModal(member_item)"
+            class="text-blue-600 hover:text-blue-800 p-2 rounded-md hover:bg-blue-100 transition-colors duration-200 flex items-center text-sm"
+            title="Редактировать"
+          >
+            <span class="material-symbols-outlined text-base md:mr-1"
+              >edit</span
+            >
+            <span class="hidden md:inline">Редакт.</span>
+          </button>
           <button
             @click="deleteMember(member_item.id)"
             class="text-red-500 hover:text-red-700 p-2 rounded-md hover:bg-red-100 transition-colors duration-200 flex items-center text-sm"
             title="Удалить"
           >
-            <span class="material-symbols-outlined text-base mr-1">delete</span>
-            Удалить
+            <span class="material-symbols-outlined text-base md:mr-1"
+              >delete</span
+            >
+            <span class="hidden md:inline">Удалить</span>
           </button>
         </div>
+      </div>
+    </div>
+
+    <!-- Modal for Edit Member -->
+    <div
+      v-if="isEditMemberModalOpen"
+      class="fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full flex justify-center items-center z-50 p-4"
+    >
+      <div class="bg-white p-6 sm:p-8 rounded-lg shadow-xl w-full max-w-lg">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-2xl font-semibold text-gray-700">
+            Редактировать участника
+          </h2>
+          <button
+            @click="closeEditMemberModal"
+            class="text-gray-500 hover:text-gray-700 p-1 rounded-full"
+          >
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <form @submit.prevent="saveEditedMember" class="space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label class="label-form">Имя</label>
+              <input
+                v-model="currentEditMember.firstName"
+                type="text"
+                class="input-field"
+                required
+              />
+            </div>
+            <div>
+              <label class="label-form">Фамилия</label>
+              <input
+                v-model="currentEditMember.lastName"
+                type="text"
+                class="input-field"
+                required
+              />
+            </div>
+            <div>
+              <label class="label-form">Роль</label>
+              <select
+                v-model="currentEditMember.role"
+                class="input-field"
+                required
+              >
+                <option
+                  v-for="role_item in roles"
+                  :key="role_item"
+                  :value="role_item"
+                >
+                  {{ role_item }}
+                </option>
+              </select>
+            </div>
+            <div>
+              <label class="label-form">Телефон</label>
+              <input
+                v-model="currentEditMember.phone"
+                type="tel"
+                class="input-field"
+                required
+              />
+            </div>
+          </div>
+          <div class="col-span-full">
+            <label class="label-form">Email</label>
+            <input
+              v-model="currentEditMember.email"
+              type="email"
+              class="input-field"
+              required
+            />
+          </div>
+          <div class="flex justify-end space-x-3 pt-4">
+            <button
+              type="button"
+              @click="closeEditMemberModal"
+              class="btn-secondary"
+            >
+              Отмена
+            </button>
+            <button type="submit" class="btn-primary">
+              Сохранить изменения
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
@@ -247,6 +435,12 @@ const deleteMember = (id) => {
 }
 .btn-secondary {
   @apply px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg shadow-sm;
+}
+.btn-sort {
+  @apply px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-50 rounded-md hover:bg-gray-200 border border-gray-300 transition-colors;
+}
+.active-sort {
+  @apply bg-primary-100 text-primary-700 border-primary-600 font-semibold;
 }
 /* .read-the-docs { color: #888; } */ /* Пример закомментированного стиля, который был в проблемной версии */
 /* .whitespace-pre-line { white-space: pre-line; } */ /* Пример закомментированного стиля */

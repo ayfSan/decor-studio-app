@@ -11,74 +11,108 @@
       </button>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      <div
-        v-if="events.length === 0"
-        class="col-span-full text-center py-10 text-gray-500"
-      >
-        <p>Нет мероприятий для отображения.</p>
-        <p>Нажмите "Новое мероприятие", чтобы добавить.</p>
-      </div>
-      <div
-        v-for="event_item in events"
-        :key="event_item.idevent"
-        class="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col"
-      >
-        <div class="bg-primary-50 p-4">
-          <h3 class="font-semibold text-lg text-primary-700">
-            {{ event_item.project_name || "Мероприятие без названия" }}
-          </h3>
-          <p class="text-sm text-gray-600 mt-1">
-            {{ formatDate(event_item.date) }}
-          </p>
-        </div>
+    <!-- Поиск и фильтры -->
+    <div class="mb-6">
+      <input
+        type="text"
+        v-model="searchQuery"
+        placeholder="Поиск по названию мероприятия..."
+        class="input-field w-full md:w-1/2 lg:w-1/3"
+      />
+    </div>
 
-        <div class="p-4 space-y-3 flex-grow">
-          <p class="text-sm">
-            <strong class="font-medium">Категория:</strong>
-            {{ getCategoryName(event_item.category_event_idcategory_event) }}
-          </p>
-          <p class="text-sm">
-            <strong class="font-medium">Место:</strong>
-            {{ getVenueName(event_item.venue_idvenue) }}
-          </p>
-          <p class="text-sm">
-            <strong class="font-medium">Клиент:</strong>
-            {{ getCustomerName(event_item.customer_idcustomer) }}
-          </p>
-          <p class="text-sm">
-            <strong class="font-medium">Стоимость:</strong>
-            {{ formatCurrency(event_item.cost) }}
-          </p>
-          <p class="text-sm">
-            <strong class="font-medium">Участники (описание):</strong>
-            {{ event_item.participants || "-" }}
-          </p>
-        </div>
+    <div v-if="!hasEventsAfterFilter" class="text-center py-10 text-gray-500">
+      <p v-if="events.length === 0">Нет мероприятий для отображения.</p>
+      <p v-else>Мероприятия по вашему запросу не найдены.</p>
+      <p v-if="events.length === 0">
+        Нажмите "Новое мероприятие", чтобы добавить.
+      </p>
+    </div>
 
-        <div class="p-4 border-t border-gray-200 bg-gray-50">
-          <div class="flex justify-between items-center space-x-2">
-            <button
-              @click="openEditEventModal(event_item)"
-              class="btn-icon-text text-primary-600 hover:text-primary-800"
+    <div v-else>
+      <div
+        v-for="(yearGroup, year) in filteredAndGroupedEvents"
+        :key="year"
+        class="mb-8"
+      >
+        <h2
+          @click="toggleGroup('year-' + year)"
+          class="text-2xl font-semibold text-gray-700 mb-4 sticky top-0 bg-white py-2 z-10 border-b cursor-pointer flex justify-between items-center select-none"
+        >
+          {{ year }} год
+          <span
+            class="material-symbols-outlined text-gray-500 transform transition-transform duration-200"
+            :class="{ 'rotate-180': isGroupExpanded('year-' + year) }"
+          >
+            expand_more
+          </span>
+        </h2>
+        <div v-if="isGroupExpanded('year-' + year)">
+          <div
+            v-for="(monthGroup, monthName) in yearGroup"
+            :key="monthName"
+            class="mb-6 ml-4 md:ml-6"
+          >
+            <h3
+              @click="toggleGroup('month-' + year + '-' + monthName)"
+              class="text-xl font-medium text-gray-600 mb-3 cursor-pointer flex justify-between items-center select-none"
             >
-              <span class="material-symbols-outlined text-lg">edit</span>
-              <span class="hidden sm:inline text-sm">Изменить</span>
-            </button>
-            <button
-              @click="goToTodoList(event_item.idevent)"
-              class="btn-icon-text text-gray-600 hover:text-gray-800"
+              {{ monthName }}
+              <span
+                class="material-symbols-outlined text-gray-500 transform transition-transform duration-200"
+                :class="{
+                  'rotate-180': isGroupExpanded(
+                    'month-' + year + '-' + monthName
+                  ),
+                }"
+              >
+                expand_more
+              </span>
+            </h3>
+            <div
+              v-if="isGroupExpanded('month-' + year + '-' + monthName)"
+              class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
             >
-              <span class="material-symbols-outlined text-lg">checklist</span>
-              <span class="hidden sm:inline text-sm">Чек-лист</span>
-            </button>
-            <button
-              @click="confirmDeleteEvent(event_item)"
-              class="btn-icon-text text-red-500 hover:text-red-700"
-            >
-              <span class="material-symbols-outlined text-lg">delete</span>
-              <span class="hidden sm:inline text-sm">Удалить</span>
-            </button>
+              <div
+                v-for="event_item in monthGroup"
+                :key="event_item.idevent"
+                class="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col"
+              >
+                <div class="bg-primary-50 p-4">
+                  <h3
+                    class="font-semibold text-lg text-primary-700 truncate"
+                    :title="event_item.project_name"
+                  >
+                    {{ event_item.project_name || "Мероприятие без названия" }}
+                  </h3>
+                  <p class="text-sm text-gray-600 mt-1">
+                    {{ formatDateShort(event_item.date) }}
+                  </p>
+                </div>
+
+                <div class="p-4 space-y-2 flex-grow">
+                  <p class="text-sm">
+                    <strong class="font-medium">Стоимость:</strong>
+                    {{ formatCurrency(event_item.cost) }}
+                  </p>
+                </div>
+
+                <div class="p-4 border-t border-gray-200 bg-gray-50">
+                  <router-link
+                    :to="{
+                      name: 'EventDetail',
+                      params: { eventId: event_item.idevent },
+                    }"
+                    class="btn-primary-outline w-full flex items-center justify-center text-sm"
+                  >
+                    <span class="material-symbols-outlined text-base mr-1"
+                      >visibility</span
+                    >
+                    Подробнее
+                  </router-link>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -219,6 +253,7 @@ import { ref, onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
 
 const router = useRouter();
+const searchQuery = ref(""); // Для текстового поиска
 
 // Demo data for related entities
 const eventCategories = ref([
@@ -246,21 +281,61 @@ const events = ref([
     idevent: 1,
     date: "2024-07-15T14:00:00.000Z",
     project_name: "Свадьба Анны и Петра",
-    category_event_idcategory_event: 1, // ID for 'Свадьба'
-    venue_idvenue: 1, // ID for 'Ресторан "Золотой Дракон"'
-    customer_idcustomer: 2, // ID for 'Анна Петрова'
-    cost: 500000.0,
-    participants: "Молодожены, родители, близкие друзья (около 50 человек)",
+    category_event_idcategory_event: 1,
+    venue_idvenue: 1,
+    customer_idcustomer: 2,
+    cost: 250000,
+    participants: "Молодожены, гости (50 чел)",
   },
   {
     idevent: 2,
     date: "2024-08-20T18:00:00.000Z",
     project_name: 'Юбилей компании "ТехноПрорыв"',
-    category_event_idcategory_event: 2, // ID for 'Корпоратив'
-    venue_idvenue: 2, // ID for 'Лофт "Атмосфера"'
-    customer_idcustomer: 1, // ID for 'ООО "Праздник Плюс"'
-    cost: 300000.0,
-    participants: "Сотрудники компании (100 человек), руководство",
+    category_event_idcategory_event: 2,
+    venue_idvenue: 2,
+    customer_idcustomer: 1,
+    cost: 500000,
+    participants: "Сотрудники компании (100 чел), руководство",
+  },
+  {
+    idevent: 3,
+    date: "2023-12-10T12:00:00.000Z",
+    project_name: "Новогодний корпоратив",
+    category_event_idcategory_event: 2,
+    venue_idvenue: 1,
+    customer_idcustomer: 1,
+    cost: 300000,
+    participants: "Сотрудники (70 чел)",
+  },
+  {
+    idevent: 4,
+    date: "2024-07-25T10:00:00.000Z",
+    project_name: "Конференция Разработчиков",
+    category_event_idcategory_event: 4,
+    venue_idvenue: 3,
+    customer_idcustomer: 3,
+    cost: 150000,
+    participants: "Участники конференции (120 чел), спикеры",
+  },
+  {
+    idevent: 5,
+    date: "2024-09-05T16:00:00.000Z",
+    project_name: "День Рождения Ивана",
+    category_event_idcategory_event: 3,
+    venue_idvenue: 2,
+    customer_idcustomer: 3,
+    cost: 80000,
+    participants: "Именинник, друзья (20 чел)",
+  },
+  {
+    idevent: 6,
+    project_name: "Стратегическая сессия",
+    date: new Date(Date.now() + 86400000 * 12).toISOString(),
+    cost: 120000,
+    category_event_idcategory_event: 2,
+    venue_idvenue: 1,
+    customer_idcustomer: 3,
+    participants: "Топ менеджмент",
   },
 ]);
 
@@ -278,33 +353,57 @@ const defaultEvent = {
   participants: "",
 };
 
-// Helper functions to get names by ID
-const getCategoryName = (id) => {
-  const category = eventCategories.value.find(
-    (cat) => cat.idcategory_event === id
+const expandedGroups = ref({});
+
+const toggleGroup = (groupId) => {
+  expandedGroups.value[groupId] = !expandedGroups.value[groupId];
+};
+
+const isGroupExpanded = (groupId) => {
+  if (expandedGroups.value[groupId] === undefined) {
+    if (groupId.startsWith("year-")) {
+      const yearFromGroupId = groupId.split("-")[1];
+      const currentYear = new Date().getFullYear().toString();
+      return yearFromGroupId === currentYear;
+    }
+    if (groupId.startsWith("month-")) {
+      const [, yearFromGroupId, monthNameFromGroupId] = groupId.split("-");
+      const currentDate = new Date();
+      const currentYear = currentDate.getFullYear().toString();
+      const currentMonthName =
+        currentDate
+          .toLocaleString("ru-RU", { month: "long" })
+          .charAt(0)
+          .toUpperCase() +
+        currentDate.toLocaleString("ru-RU", { month: "long" }).slice(1);
+      return (
+        yearFromGroupId === currentYear &&
+        monthNameFromGroupId === currentMonthName
+      );
+    }
+    return false;
+  }
+  return expandedGroups.value[groupId];
+};
+
+// Вычисляемое свойство для фильтрации событий перед группировкой
+const filteredEvents = computed(() => {
+  if (!searchQuery.value) {
+    return events.value;
+  }
+  const lowerSearchQuery = searchQuery.value.toLowerCase();
+  return events.value.filter((event) =>
+    (event.project_name || "").toLowerCase().includes(lowerSearchQuery)
   );
-  return category ? category.name : "Не указана";
-};
+});
 
-const getVenueName = (id) => {
-  const venue = venuesList.value.find((v) => v.idvenue === id);
-  return venue ? venue.name : "Не указано";
-};
+const hasEventsAfterFilter = computed(() => {
+  return filteredEvents.value.length > 0;
+});
 
-const getCustomerName = (id) => {
-  const customer = customersList.value.find((c) => c.idcustomer === id);
-  return customer ? customer.name : "Не указан";
-};
-
-function formatDate(dateString) {
+function formatDateShort(dateString) {
   if (!dateString) return "N/A";
-  const options = {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  };
+  const options = { year: "numeric", month: "long", day: "numeric" };
   return new Date(dateString).toLocaleDateString("ru-RU", options);
 }
 
@@ -355,7 +454,8 @@ function saveEvent() {
       events.value[index] = { ...currentEvent.value };
     }
   } else {
-    events.value.push({ ...currentEvent.value, idevent: Date.now() }); // Replace Date.now() with actual ID
+    currentEvent.value.idevent = Date.now() + Math.floor(Math.random() * 1000);
+    events.value.push({ ...currentEvent.value });
   }
   closeEventModal();
 }
@@ -380,9 +480,52 @@ const goToTodoList = (eventId) => {
   router.push(`/todo/${eventId}`);
 };
 
-// TODO: Fetch actual categories, venues, customers for dropdowns in modal
+const groupedEvents = computed(() => {
+  const groups = {};
+  const sortedEvents = [...filteredEvents.value].sort(
+    (a, b) => new Date(b.date) - new Date(a.date)
+  );
+
+  for (const event of sortedEvents) {
+    const date = new Date(event.date);
+    const year = date.getFullYear();
+    const month = date.toLocaleString("ru-RU", { month: "long" });
+    const capitalizedMonth = month.charAt(0).toUpperCase() + month.slice(1);
+
+    if (!groups[year]) {
+      groups[year] = {};
+    }
+    if (!groups[year][capitalizedMonth]) {
+      groups[year][capitalizedMonth] = [];
+    }
+    groups[year][capitalizedMonth].push(event);
+  }
+
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear();
+  const currentMonthName =
+    currentDate
+      .toLocaleString("ru-RU", { month: "long" })
+      .charAt(0)
+      .toUpperCase() +
+    currentDate.toLocaleString("ru-RU", { month: "long" }).slice(1);
+  if (groups[currentYear] && groups[currentYear][currentMonthName]) {
+    expandedGroups.value["year-" + currentYear] = true;
+    expandedGroups.value[
+      "month-" + currentYear + "-" + currentMonthName
+    ] = true;
+  } else if (groups[currentYear]) {
+    expandedGroups.value["year-" + currentYear] = true;
+  }
+
+  return groups;
+});
+
+// Переименовываем computed property для ясности
+const filteredAndGroupedEvents = groupedEvents;
+
 onMounted(() => {
-  console.log("Events component mounted. Fetch related data here if needed.");
+  const forceCompute = filteredAndGroupedEvents.value;
 });
 </script>
 
@@ -400,7 +543,7 @@ onMounted(() => {
 .btn-secondary {
   @apply px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg shadow-md transition-colors duration-200;
 }
-.btn-icon-text {
-  @apply flex items-center space-x-1 px-2 py-1 rounded-md hover:bg-gray-100 transition-colors duration-150;
+.btn-primary-outline {
+  @apply px-4 py-2 border border-primary-600 text-primary-600 hover:bg-primary-50 rounded-lg shadow-sm transition-colors duration-200;
 }
 </style>
