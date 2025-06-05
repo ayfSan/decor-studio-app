@@ -1,7 +1,7 @@
 <script setup>
-//#region calendar
-import { ref, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
+import apiService from "@/services/api.service.js";
 
 const router = useRouter();
 
@@ -114,7 +114,6 @@ function nextMonth() {
     currentMonth.value += 1;
   }
 }
-//#endregion
 
 const upcomingEvents = ref([
   { id: 1, name: "Свадьба Анны и Петра", date: "15 мая 2024" },
@@ -133,6 +132,15 @@ function navigateToNewTransaction() {
 function navigateToNewMember() {
   router.push("/members");
 }
+
+onMounted(async () => {
+  try {
+    const data = await apiService.testApi();
+    console.log("API Test successful:", data);
+  } catch (error) {
+    console.error("API Test failed:", error);
+  }
+});
 </script>
 
 <template>

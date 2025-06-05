@@ -186,7 +186,7 @@
                 :key="venue.idvenue"
                 :value="venue.idvenue"
               >
-                {{ venue.name }}
+                {{ venue.name_venue }}
               </option>
             </select>
           </div>
@@ -204,7 +204,7 @@
                 :key="customer.idcustomer"
                 :value="customer.idcustomer"
               >
-                {{ customer.name }}
+                {{ customer.name_customer }}
               </option>
             </select>
           </div>
@@ -249,284 +249,195 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
+import apiService from "@/services/api.service.js";
+import {
+  formatDate,
+  formatCurrency,
+  formatDateShort,
+} from "@/utils/formatters.js";
 
 const router = useRouter();
-const searchQuery = ref(""); // Для текстового поиска
 
-// Demo data for related entities
-const eventCategories = ref([
-  { idcategory_event: 1, name: "Свадьба" },
-  { idcategory_event: 2, name: "Корпоратив" },
-  { idcategory_event: 3, name: "День рождения" },
-  { idcategory_event: 4, name: "Конференция" },
-]);
+// Реактивные переменные для данных
+const events = ref([]);
+const eventCategories = ref([]); // Будут загружены позже
+const venuesList = ref([]); // Будут загружены позже
+const customersList = ref([]); // Будут загружены позже
+const searchQuery = ref("");
 
-const venuesList = ref([
-  { idvenue: 1, name: 'Ресторан "Золотой Дракон"' },
-  { idvenue: 2, name: 'Лофт "Атмосфера"' },
-  { idvenue: 3, name: 'Конференц-зал "Орион"' },
-]);
-
-const customersList = ref([
-  { idcustomer: 1, name: 'ООО "Праздник Плюс"' },
-  { idcustomer: 2, name: "Анна Петрова" },
-  { idcustomer: 3, name: "Иван Сидоров" },
-]);
-
-// Demo data - in real app, fetch from API
-const events = ref([
-  {
-    idevent: 1,
-    date: "2024-07-15T14:00:00.000Z",
-    project_name: "Свадьба Анны и Петра",
-    category_event_idcategory_event: 1,
-    venue_idvenue: 1,
-    customer_idcustomer: 2,
-    cost: 250000,
-    participants: "Молодожены, гости (50 чел)",
-  },
-  {
-    idevent: 2,
-    date: "2024-08-20T18:00:00.000Z",
-    project_name: 'Юбилей компании "ТехноПрорыв"',
-    category_event_idcategory_event: 2,
-    venue_idvenue: 2,
-    customer_idcustomer: 1,
-    cost: 500000,
-    participants: "Сотрудники компании (100 чел), руководство",
-  },
-  {
-    idevent: 3,
-    date: "2023-12-10T12:00:00.000Z",
-    project_name: "Новогодний корпоратив",
-    category_event_idcategory_event: 2,
-    venue_idvenue: 1,
-    customer_idcustomer: 1,
-    cost: 300000,
-    participants: "Сотрудники (70 чел)",
-  },
-  {
-    idevent: 4,
-    date: "2024-07-25T10:00:00.000Z",
-    project_name: "Конференция Разработчиков",
-    category_event_idcategory_event: 4,
-    venue_idvenue: 3,
-    customer_idcustomer: 3,
-    cost: 150000,
-    participants: "Участники конференции (120 чел), спикеры",
-  },
-  {
-    idevent: 5,
-    date: "2024-09-05T16:00:00.000Z",
-    project_name: "День Рождения Ивана",
-    category_event_idcategory_event: 3,
-    venue_idvenue: 2,
-    customer_idcustomer: 3,
-    cost: 80000,
-    participants: "Именинник, друзья (20 чел)",
-  },
-  {
-    idevent: 6,
-    project_name: "Стратегическая сессия",
-    date: new Date(Date.now() + 86400000 * 12).toISOString(),
-    cost: 120000,
-    category_event_idcategory_event: 2,
-    venue_idvenue: 1,
-    customer_idcustomer: 3,
-    participants: "Топ менеджмент",
-  },
-]);
-
+// Управление модальным окном
 const isEventModalOpen = ref(false);
-const currentEvent = ref({});
 const isEditMode = ref(false);
+const currentEvent = ref(null);
 
-const defaultEvent = {
-  date: new Date().toISOString().slice(0, 16),
-  project_name: "",
-  category_event_idcategory_event: null,
-  venue_idvenue: null,
-  customer_idcustomer: null,
-  cost: 0.0,
-  participants: "",
-};
-
+// Управление сворачиваемыми группами
 const expandedGroups = ref({});
 
-const toggleGroup = (groupId) => {
-  expandedGroups.value[groupId] = !expandedGroups.value[groupId];
-};
-
-const isGroupExpanded = (groupId) => {
-  if (expandedGroups.value[groupId] === undefined) {
-    if (groupId.startsWith("year-")) {
-      const yearFromGroupId = groupId.split("-")[1];
-      const currentYear = new Date().getFullYear().toString();
-      return yearFromGroupId === currentYear;
+// --- ЗАГРУЗКА ДАННЫХ ---
+async function loadEvents() {
+  try {
+    const response = await apiService.getEvents();
+    if (response.success) {
+      events.value = response.data;
+    } else {
+      console.error("Failed to load events:", response.message);
+      // Можно добавить уведомление для пользователя
     }
-    if (groupId.startsWith("month-")) {
-      const [, yearFromGroupId, monthNameFromGroupId] = groupId.split("-");
-      const currentDate = new Date();
-      const currentYear = currentDate.getFullYear().toString();
-      const currentMonthName =
-        currentDate
-          .toLocaleString("ru-RU", { month: "long" })
-          .charAt(0)
-          .toUpperCase() +
-        currentDate.toLocaleString("ru-RU", { month: "long" }).slice(1);
-      return (
-        yearFromGroupId === currentYear &&
-        monthNameFromGroupId === currentMonthName
-      );
-    }
-    return false;
+  } catch (error) {
+    console.error("Error loading events:", error);
+    // Можно добавить уведомление для пользователя
   }
-  return expandedGroups.value[groupId];
-};
+}
 
-// Вычисляемое свойство для фильтрации событий перед группировкой
+async function loadEventCategories() {
+  try {
+    const response = await apiService.getEventCategories();
+    if (response.success) {
+      eventCategories.value = response.data;
+    } else {
+      console.error("Failed to load event categories:", response.message);
+    }
+  } catch (error) {
+    console.error("Error loading event categories:", error);
+  }
+}
+
+async function loadVenues() {
+  try {
+    const response = await apiService.getVenues();
+    if (response.success) {
+      venuesList.value = response.data;
+    } else {
+      console.error("Failed to load venues:", response.message);
+    }
+  } catch (error) {
+    console.error("Error loading venues:", error);
+  }
+}
+
+async function loadCustomers() {
+  try {
+    const response = await apiService.getCustomers();
+    if (response.success) {
+      customersList.value = response.data;
+    } else {
+      console.error("Failed to load customers:", response.message);
+    }
+  } catch (error) {
+    console.error("Error loading customers:", error);
+  }
+}
+
+// Загружаем данные при монтировании компонента
+onMounted(() => {
+  loadEvents();
+  loadEventCategories();
+  loadVenues();
+  loadCustomers();
+});
+
+// --- ЛОГИКА ОТОБРАЖЕНИЯ ---
+
 const filteredEvents = computed(() => {
   if (!searchQuery.value) {
     return events.value;
   }
-  const lowerSearchQuery = searchQuery.value.toLowerCase();
   return events.value.filter((event) =>
-    (event.project_name || "").toLowerCase().includes(lowerSearchQuery)
+    event.project_name.toLowerCase().includes(searchQuery.value.toLowerCase())
   );
+});
+
+const filteredAndGroupedEvents = computed(() => {
+  const grouped = {};
+  filteredEvents.value.forEach((event) => {
+    const date = new Date(event.date);
+    const year = date.getFullYear();
+    const monthName = date.toLocaleString("ru-RU", { month: "long" });
+
+    if (!grouped[year]) {
+      grouped[year] = {};
+    }
+    if (!grouped[year][monthName]) {
+      grouped[year][monthName] = [];
+    }
+    grouped[year][monthName].push(event);
+  });
+  return grouped;
 });
 
 const hasEventsAfterFilter = computed(() => {
   return filteredEvents.value.length > 0;
 });
 
-function formatDateShort(dateString) {
-  if (!dateString) return "N/A";
-  const options = { year: "numeric", month: "long", day: "numeric" };
-  return new Date(dateString).toLocaleDateString("ru-RU", options);
-}
-
-function formatCurrency(value) {
-  const val = parseFloat(value);
-  if (isNaN(val)) return "-";
-  return val.toLocaleString("ru-RU", {
-    style: "currency",
-    currency: "RUB",
-    minimumFractionDigits: 2,
-  });
-}
-
-function openAddEventModal() {
-  isEditMode.value = false;
-  currentEvent.value = {
-    ...defaultEvent,
-    date: new Date().toISOString().slice(0, 16),
-  };
-  isEventModalOpen.value = true;
-}
-
-function openEditEventModal(event_item) {
-  isEditMode.value = true;
-  const dateForInput = event_item.date
-    ? new Date(event_item.date).toISOString().slice(0, 16)
-    : "";
-  currentEvent.value = { ...event_item, date: dateForInput };
-  isEventModalOpen.value = true;
-}
-
-function closeEventModal() {
-  isEventModalOpen.value = false;
-}
-
-function saveEvent() {
-  if (currentEvent.value.date) {
-    const localDate = new Date(currentEvent.value.date);
-    currentEvent.value.date = new Date(
-      localDate.getTime() - localDate.getTimezoneOffset() * 60000
-    ).toISOString();
-  }
-  if (isEditMode.value) {
-    const index = events.value.findIndex(
-      (e) => e.idevent === currentEvent.value.idevent
-    );
-    if (index !== -1) {
-      events.value[index] = { ...currentEvent.value };
-    }
-  } else {
-    currentEvent.value.idevent = Date.now() + Math.floor(Math.random() * 1000);
-    events.value.push({ ...currentEvent.value });
-  }
-  closeEventModal();
-}
-
-function confirmDeleteEvent(event_item) {
-  if (
-    confirm(
-      `Вы уверены, что хотите удалить мероприятие "${event_item.project_name}"?`
-    )
-  ) {
-    deleteEvent(event_item);
-  }
-}
-
-function deleteEvent(eventToDelete) {
-  events.value = events.value.filter(
-    (e) => e.idevent !== eventToDelete.idevent
-  );
-}
-
-const goToTodoList = (eventId) => {
-  router.push(`/todo/${eventId}`);
+const toggleGroup = (groupId) => {
+  expandedGroups.value[groupId] = !expandedGroups.value[groupId];
 };
 
-const groupedEvents = computed(() => {
-  const groups = {};
-  const sortedEvents = [...filteredEvents.value].sort(
-    (a, b) => new Date(b.date) - new Date(a.date)
-  );
+const isGroupExpanded = (groupId) => {
+  return expandedGroups.value[groupId] !== false; // По умолчанию раскрыты
+};
 
-  for (const event of sortedEvents) {
-    const date = new Date(event.date);
-    const year = date.getFullYear();
-    const month = date.toLocaleString("ru-RU", { month: "long" });
-    const capitalizedMonth = month.charAt(0).toUpperCase() + month.slice(1);
+// --- ЛОГИКА МОДАЛЬНОГО ОКНА ---
 
-    if (!groups[year]) {
-      groups[year] = {};
+const openAddEventModal = () => {
+  isEditMode.value = false;
+  currentEvent.value = {
+    date: new Date().toISOString().slice(0, 16),
+    project_name: "",
+    category_event_idcategory_event: null,
+    venue_idvenue: null,
+    customer_idcustomer: null,
+    cost: 0.0,
+    participants: "",
+  };
+  isEventModalOpen.value = true;
+};
+
+const openEditEventModal = (event) => {
+  isEditMode.value = true;
+  // Мы должны убедиться, что дата в формате, понятном для <input type="datetime-local">
+  const dateForInput = event.date
+    ? new Date(event.date).toISOString().slice(0, 16)
+    : "";
+  currentEvent.value = { ...event, date: dateForInput };
+  isEventModalOpen.value = true;
+};
+
+const closeEventModal = () => {
+  isEventModalOpen.value = false;
+  currentEvent.value = null;
+};
+
+const saveEvent = async () => {
+  if (!currentEvent.value) return;
+
+  try {
+    if (isEditMode.value) {
+      const response = await apiService.updateEvent(
+        currentEvent.value.idevent,
+        currentEvent.value
+      );
+      if (response.success) {
+        console.log("Event updated successfully!", response.data);
+      } else {
+        console.error("Failed to update event:", response.message);
+        return;
+      }
+    } else {
+      const response = await apiService.createEvent(currentEvent.value);
+      if (!response.success) {
+        console.error("Failed to create event:", response.message);
+        return;
+      }
     }
-    if (!groups[year][capitalizedMonth]) {
-      groups[year][capitalizedMonth] = [];
-    }
-    groups[year][capitalizedMonth].push(event);
+    await loadEvents();
+    closeEventModal();
+  } catch (error) {
+    console.error("Error saving event:", error);
   }
-
-  const currentDate = new Date();
-  const currentYear = currentDate.getFullYear();
-  const currentMonthName =
-    currentDate
-      .toLocaleString("ru-RU", { month: "long" })
-      .charAt(0)
-      .toUpperCase() +
-    currentDate.toLocaleString("ru-RU", { month: "long" }).slice(1);
-  if (groups[currentYear] && groups[currentYear][currentMonthName]) {
-    expandedGroups.value["year-" + currentYear] = true;
-    expandedGroups.value[
-      "month-" + currentYear + "-" + currentMonthName
-    ] = true;
-  } else if (groups[currentYear]) {
-    expandedGroups.value["year-" + currentYear] = true;
-  }
-
-  return groups;
-});
-
-// Переименовываем computed property для ясности
-const filteredAndGroupedEvents = groupedEvents;
-
-onMounted(() => {
-  const forceCompute = filteredAndGroupedEvents.value;
-});
+};
 </script>
 
 <style scoped>
@@ -545,5 +456,8 @@ onMounted(() => {
 }
 .btn-primary-outline {
   @apply px-4 py-2 border border-primary-600 text-primary-600 hover:bg-primary-50 rounded-lg shadow-sm transition-colors duration-200;
+}
+.btn-secondary-outline {
+  @apply px-4 py-2 border border-secondary-600 text-secondary-600 hover:bg-secondary-50 rounded-lg shadow-sm transition-colors duration-200;
 }
 </style>

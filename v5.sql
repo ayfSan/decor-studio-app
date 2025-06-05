@@ -27,8 +27,9 @@ DROP TABLE IF EXISTS `account_cashflow`;
 CREATE TABLE `account_cashflow` (
   `idaccount_cashflow` int NOT NULL AUTO_INCREMENT,
   `name` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  PRIMARY KEY (`idaccount_cashflow`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  PRIMARY KEY (`idaccount_cashflow`),
+  UNIQUE KEY `account_cashflow_name_key` (`name`)
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -37,6 +38,7 @@ CREATE TABLE `account_cashflow` (
 
 LOCK TABLES `account_cashflow` WRITE;
 /*!40000 ALTER TABLE `account_cashflow` DISABLE KEYS */;
+INSERT INTO `account_cashflow` VALUES (2,'Касса (наличные)'),(1,'Основной счет (банк)');
 /*!40000 ALTER TABLE `account_cashflow` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -64,7 +66,7 @@ CREATE TABLE `cashflow` (
   CONSTRAINT `cashflow_account_cashflow_idaccount_cashflow_fkey` FOREIGN KEY (`account_cashflow_idaccount_cashflow`) REFERENCES `account_cashflow` (`idaccount_cashflow`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `cashflow_category_cashflow_idcategory_cashflow_fkey` FOREIGN KEY (`category_cashflow_idcategory_cashflow`) REFERENCES `category_cashflow` (`idcategory_cashflow`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `cashflow_event_idevent_fkey` FOREIGN KEY (`event_idevent`) REFERENCES `event` (`idevent`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -73,6 +75,7 @@ CREATE TABLE `cashflow` (
 
 LOCK TABLES `cashflow` WRITE;
 /*!40000 ALTER TABLE `cashflow` DISABLE KEYS */;
+INSERT INTO `cashflow` VALUES (1,'2026-08-01 10:00:00.000','Предоплата за корпоратив',1,1,2,'50% предоплата',175000.00,0.00);
 /*!40000 ALTER TABLE `cashflow` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -86,8 +89,9 @@ DROP TABLE IF EXISTS `category_cashflow`;
 CREATE TABLE `category_cashflow` (
   `idcategory_cashflow` int NOT NULL AUTO_INCREMENT,
   `name` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  PRIMARY KEY (`idcategory_cashflow`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  PRIMARY KEY (`idcategory_cashflow`),
+  UNIQUE KEY `category_cashflow_name_key` (`name`)
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -96,6 +100,7 @@ CREATE TABLE `category_cashflow` (
 
 LOCK TABLES `category_cashflow` WRITE;
 /*!40000 ALTER TABLE `category_cashflow` DISABLE KEYS */;
+INSERT INTO `category_cashflow` VALUES (2,'Аренда оборудования'),(3,'Закупка материалов'),(1,'Оплата от клиента');
 /*!40000 ALTER TABLE `category_cashflow` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -109,8 +114,9 @@ DROP TABLE IF EXISTS `category_event`;
 CREATE TABLE `category_event` (
   `idcategory_event` int NOT NULL AUTO_INCREMENT,
   `name` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  PRIMARY KEY (`idcategory_event`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  PRIMARY KEY (`idcategory_event`),
+  UNIQUE KEY `category_event_name_key` (`name`)
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -119,7 +125,34 @@ CREATE TABLE `category_event` (
 
 LOCK TABLES `category_event` WRITE;
 /*!40000 ALTER TABLE `category_event` DISABLE KEYS */;
+INSERT INTO `category_event` VALUES (3,'День рождения'),(2,'Корпоратив'),(1,'Свадьба');
 /*!40000 ALTER TABLE `category_event` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `contact`
+--
+
+DROP TABLE IF EXISTS `contact`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `contact` (
+  `idcontact` int NOT NULL AUTO_INCREMENT,
+  `name` varchar(191) NOT NULL,
+  `specialty` varchar(191) DEFAULT NULL,
+  `phone` varchar(45) DEFAULT NULL,
+  `notes` text,
+  PRIMARY KEY (`idcontact`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `contact`
+--
+
+LOCK TABLES `contact` WRITE;
+/*!40000 ALTER TABLE `contact` DISABLE KEYS */;
+/*!40000 ALTER TABLE `contact` ENABLE KEYS */;
 UNLOCK TABLES;
 
 --
@@ -139,7 +172,7 @@ CREATE TABLE `customer` (
   PRIMARY KEY (`idcustomer`),
   UNIQUE KEY `customer_phone_key` (`phone`),
   UNIQUE KEY `customer_telegram_username_key` (`telegram_username`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -148,6 +181,7 @@ CREATE TABLE `customer` (
 
 LOCK TABLES `customer` WRITE;
 /*!40000 ALTER TABLE `customer` DISABLE KEYS */;
+INSERT INTO `customer` VALUES (1,'Иванов Иван Петрович','Иванов Иван Петрович','+79112223344','ivan_ivanov','Частный клиент'),(2,'ООО \"Ромашка\"','Сидорова Анна','+79223334455','oooromashka','Корпоративный клиент, нужны акты');
 /*!40000 ALTER TABLE `customer` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -198,13 +232,14 @@ CREATE TABLE `event` (
   `cost` decimal(10,2) DEFAULT NULL,
   `participants` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   PRIMARY KEY (`idevent`),
+  UNIQUE KEY `event_project_name_key` (`project_name`),
   KEY `event_category_event_idcategory_event_fkey` (`category_event_idcategory_event`),
   KEY `event_venue_idvenue_fkey` (`venue_idvenue`),
   KEY `event_customer_idcustomer_fkey` (`customer_idcustomer`),
   CONSTRAINT `event_category_event_idcategory_event_fkey` FOREIGN KEY (`category_event_idcategory_event`) REFERENCES `category_event` (`idcategory_event`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `event_customer_idcustomer_fkey` FOREIGN KEY (`customer_idcustomer`) REFERENCES `customer` (`idcustomer`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `event_venue_idvenue_fkey` FOREIGN KEY (`venue_idvenue`) REFERENCES `venue` (`idvenue`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -213,7 +248,60 @@ CREATE TABLE `event` (
 
 LOCK TABLES `event` WRITE;
 /*!40000 ALTER TABLE `event` DISABLE KEYS */;
+INSERT INTO `event` VALUES (1,'2025-06-15 14:00:00.000','Тестовая Свадьба Ивановых',1,1,1,200000.00,'Молодожены и 50 гостей'),(2,'2025-08-20 18:00:00.000','Тестовый Корпоратив ООО \"Ромашка\"',2,2,2,350000.00,'Сотрудники компании, 70 человек'),(3,'2025-06-04 23:03:00.000','Тестовое мероприятие 1243',2,2,1,500000.00,'-'),(4,'2025-06-05 09:22:00.000','еще один тест1№',1,2,1,10.00,'');
 /*!40000 ALTER TABLE `event` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `event_contact`
+--
+
+DROP TABLE IF EXISTS `event_contact`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `event_contact` (
+  `event_idevent` int NOT NULL,
+  `contact_idcontact` int NOT NULL,
+  PRIMARY KEY (`event_idevent`,`contact_idcontact`),
+  KEY `fk_event_contact_contact` (`contact_idcontact`),
+  CONSTRAINT `fk_event_contact_contact` FOREIGN KEY (`contact_idcontact`) REFERENCES `contact` (`idcontact`) ON DELETE CASCADE,
+  CONSTRAINT `fk_event_contact_event` FOREIGN KEY (`event_idevent`) REFERENCES `event` (`idevent`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `event_contact`
+--
+
+LOCK TABLES `event_contact` WRITE;
+/*!40000 ALTER TABLE `event_contact` DISABLE KEYS */;
+/*!40000 ALTER TABLE `event_contact` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `event_user`
+--
+
+DROP TABLE IF EXISTS `event_user`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `event_user` (
+  `event_idevent` int NOT NULL,
+  `user_id` int NOT NULL,
+  PRIMARY KEY (`event_idevent`,`user_id`),
+  KEY `fk_event_user_user` (`user_id`),
+  CONSTRAINT `fk_event_user_event` FOREIGN KEY (`event_idevent`) REFERENCES `event` (`idevent`) ON DELETE CASCADE,
+  CONSTRAINT `fk_event_user_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `event_user`
+--
+
+LOCK TABLES `event_user` WRITE;
+/*!40000 ALTER TABLE `event_user` DISABLE KEYS */;
+/*!40000 ALTER TABLE `event_user` ENABLE KEYS */;
 UNLOCK TABLES;
 
 --
@@ -242,7 +330,6 @@ CREATE TABLE `user` (
 
 LOCK TABLES `user` WRITE;
 /*!40000 ALTER TABLE `user` DISABLE KEYS */;
-INSERT INTO `user` VALUES (1,1020152129,'cammbucho','ИП Дачница Баба Дуся',NULL,'Администратор','2025-05-19 01:43:04.680');
 /*!40000 ALTER TABLE `user` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -263,7 +350,7 @@ CREATE TABLE `venue` (
   PRIMARY KEY (`idvenue`),
   UNIQUE KEY `venue_contact_person_key` (`contact_person`),
   UNIQUE KEY `venue_phone_key` (`phone`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -272,6 +359,7 @@ CREATE TABLE `venue` (
 
 LOCK TABLES `venue` WRITE;
 /*!40000 ALTER TABLE `venue` DISABLE KEYS */;
+INSERT INTO `venue` VALUES (1,'Ресторан \"Панорама\"','г. Город, ул. Центральная, 1','Администратор Мария','+79001234567','Вместимость до 100 человек'),(2,'Лофт \"Облака\"','г. Город, пр. Небесный, 10','Менеджер Алексей','+79007654321','Современное пространство, до 70 человек');
 /*!40000 ALTER TABLE `venue` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -292,4 +380,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-05-27 21:02:46
+-- Dump completed on 2025-06-06  0:48:37

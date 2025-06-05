@@ -257,7 +257,7 @@ _Транзакция сохранена в системе и доступна �
           ],
         },
       });
-    } catch (error) {
+  } catch (error) {
       await logger.logError(chatId, error, {
         type: "transaction",
         data: { eventTag, date, amount, description },

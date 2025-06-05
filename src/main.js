@@ -2,6 +2,8 @@ import { createApp } from "vue";
 import App from "./App.vue";
 import router from "./router";
 import "./style.css";
+import "nprogress/nprogress.css";
+import "./utils/nprogress.css";
 import { telegram } from "./utils/telegram";
 
 // Initialize Telegram Web App

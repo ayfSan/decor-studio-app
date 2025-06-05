@@ -1,41 +1,28 @@
 <!-- верстка хранится в template -->
 
-<script>
-import { telegram } from "./utils/telegram";
+<script setup>
+import { onMounted, onBeforeUnmount, ref } from "vue";
 import Navbar from "./components/Navbar.vue";
-import { ref } from "vue";
+import { telegram } from "./utils/telegram";
 
-export default {
-  name: "App",
-  components: {
-    Navbar,
-  },
-  data() {
-    return {
-      isSidebarOpen: false,
-    };
-  },
-  methods: {
-    handleClickOutside(event) {
-      // Проверяем, открыт ли навбар и был ли клик вне его области
-      if (this.isSidebarOpen && !event.target.closest(".navbar-container")) {
-        this.isSidebarOpen = false;
-      }
-    },
-  },
-  created() {
-    // Получаем данные пользователя при создании приложения
-    const userData = telegram.getUserData();
-    console.log("Telegram user data:", userData);
+const isSidebarOpen = ref(false);
 
-    // Добавляем слушатель клика при создании компонента
-    document.addEventListener("click", this.handleClickOutside);
-  },
-  beforeUnmount() {
-    // Удаляем слушатель при уничтожении компонента
-    document.removeEventListener("click", this.handleClickOutside);
-  },
+const handleClickOutside = (event) => {
+  // Проверяем, открыт ли навбар и был ли клик вне его области
+  if (isSidebarOpen.value && !event.target.closest(".navbar-container")) {
+    isSidebarOpen.value = false;
+  }
 };
+
+onMounted(() => {
+  const userData = telegram.getUserData();
+  console.log("Telegram user data:", userData);
+  document.addEventListener("click", handleClickOutside);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener("click", handleClickOutside);
+});
 </script>
 
 <template>
