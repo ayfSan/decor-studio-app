@@ -29,7 +29,7 @@
     </div>
     <div
       v-else
-      class="max-w-3xl mx-auto bg-white shadow-xl rounded-lg overflow-hidden"
+      class="max-w-4xl mx-auto bg-white shadow-xl rounded-lg overflow-hidden"
     >
       <div class="bg-primary-600 text-white p-6">
         <h1 class="text-3xl font-bold mb-1">
@@ -40,7 +40,7 @@
         </p>
       </div>
 
-      <div class="p-6 space-y-5">
+      <div class="p-6 space-y-6">
         <div>
           <h2 class="text-xl font-semibold text-gray-700 mb-2">
             Общая информация
@@ -76,7 +76,53 @@
           </p>
         </div>
 
-        <!-- Дополнительная информация или секции могут быть здесь -->
+        <!-- Documents Section -->
+        <div class="border-t pt-5">
+          <h2 class="text-xl font-semibold text-gray-700 mb-3">
+            Документы по мероприятию
+          </h2>
+          <div v-if="documentsLoading" class="text-gray-500 text-sm">
+            Загрузка документов...
+          </div>
+          <div
+            v-else-if="eventDocuments.length === 0"
+            class="text-sm text-gray-500 bg-gray-50 p-4 rounded-md"
+          >
+            К этому мероприятию еще не привязано ни одного документа.
+          </div>
+          <div v-else class="space-y-3">
+            <div
+              v-for="doc in eventDocuments"
+              :key="doc.iddocument"
+              class="bg-gray-50 p-3 rounded-lg flex justify-between items-center transition-all hover:bg-gray-100 hover:shadow-sm"
+            >
+              <div class="flex items-center overflow-hidden mr-4">
+                <span
+                  class="material-symbols-outlined text-gray-500 mr-3 hidden sm:inline"
+                  >article</span
+                >
+                <div class="overflow-hidden">
+                  <p
+                    class="font-medium text-gray-800 truncate"
+                    :title="doc.name"
+                  >
+                    {{ doc.name }}
+                  </p>
+                  <p class="text-xs text-gray-500">
+                    № {{ doc.document_number }} от
+                    {{ formatDate(doc.date, false) }}
+                  </p>
+                </div>
+              </div>
+              <button
+                @click="downloadDocument(doc.iddocument)"
+                class="btn-secondary btn-sm flex-shrink-0"
+              >
+                Скачать
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div
@@ -93,6 +139,13 @@
         <div
           class="flex flex-wrap gap-3 sm:flex-nowrap flex-grow sm:flex-grow-0 justify-center sm:justify-end"
         >
+          <button
+            @click="openGenerateDocModal"
+            class="btn-secondary flex-grow sm:flex-grow-0 flex items-center justify-center whitespace-nowrap"
+          >
+            <span class="material-symbols-outlined md:mr-2">description</span>
+            <span class="hidden md:inline">Создать документ</span>
+          </button>
           <button
             @click="openEditEventModal(event)"
             class="btn-secondary flex-grow sm:flex-grow-0 flex items-center justify-center whitespace-nowrap"
@@ -115,11 +168,9 @@
     <div
       v-if="isEditModalOpen"
       class="fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full flex justify-center items-center z-50 p-4"
+      @click.self="closeEditModal"
     >
-      <div
-        class="bg-white p-6 sm:p-8 rounded-lg shadow-xl w-full max-w-2xl"
-        @click.self="closeEditModal"
-      >
+      <div class="bg-white p-6 sm:p-8 rounded-lg shadow-xl w-full max-w-2xl">
         <h2 class="text-2xl font-bold mb-6 text-gray-800">
           Редактировать мероприятие
         </h2>
@@ -319,13 +370,61 @@
         </div>
       </div>
     </div>
+
+    <!-- Modal for Generate Document -->
+    <div
+      v-if="isGenerateDocModalOpen"
+      class="fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full flex justify-center items-center z-50 p-4"
+      @click.self="closeGenerateDocModal"
+    >
+      <div class="bg-white p-6 sm:p-8 rounded-lg shadow-xl w-full max-w-lg">
+        <h2 class="text-2xl font-bold mb-6 text-gray-800">
+          Создание документа
+        </h2>
+        <form @submit.prevent="handleGenerateDocument">
+          <div class="mb-4">
+            <label for="template-select" class="label-form"
+              >Выберите шаблон</label
+            >
+            <select
+              id="template-select"
+              v-model="selectedTemplateId"
+              required
+              class="input-field"
+            >
+              <option :value="null" disabled>-- Выберите шаблон --</option>
+              <option
+                v-for="template in documentTemplates"
+                :key="template.id"
+                :value="template.id"
+              >
+                {{ template.name }} ({{ template.type }})
+              </option>
+            </select>
+          </div>
+          <div class="flex justify-end gap-4 mt-8">
+            <button
+              type="button"
+              @click="closeGenerateDocModal"
+              class="btn-secondary"
+            >
+              Отмена
+            </button>
+            <button type="submit" class="btn-primary" :disabled="isGenerating">
+              <span v-if="isGenerating">Создание...</span>
+              <span v-else>Создать</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import apiService from "@/services/api.service";
+import apiService from "@/services/api.service.js";
 import { formatCurrency, formatDate } from "@/utils/formatters";
 import NProgress from "nprogress";
 
@@ -340,129 +439,165 @@ const route = useRoute();
 const router = useRouter();
 
 const event = ref(null);
-const eventParticipants = ref([]);
 const loading = ref(true);
-const isEditModalOpen = ref(false);
-const currentEditEvent = ref({});
-const isAddParticipantModalOpen = ref(false);
-const participantSearchQuery = ref("");
-
-// Списки для выпадающих меню в модалке редактирования
 const eventCategories = ref([]);
 const venuesList = ref([]);
 const customersList = ref([]);
+const allContacts = ref([]); // This holds the combined list of users and contacts for team selection
+const eventParticipants = ref([]); // This holds the participants of the currently viewed event
+const eventDocuments = ref([]);
+const documentsLoading = ref(true);
 
-// Наш новый объединенный список всех, кого можно добавить в команду
-const allTeamMembers = ref([]);
+const isEditModalOpen = ref(false);
+const currentEditEvent = ref(null);
+
+const isAddParticipantModalOpen = ref(false);
+
+const isGenerateDocModalOpen = ref(false);
+const documentTemplates = ref([]);
+const selectedTemplateId = ref(null);
+const isGenerating = ref(false);
+
+const participantSearchQuery = ref("");
 
 const filteredTeamMembers = computed(() => {
-  if (!isAddParticipantModalOpen.value) {
+  if (!isAddParticipantModalOpen.value || !currentEditEvent.value) {
     return [];
   }
 
-  const participantsInForm = currentEditEvent.value?.participants || [];
-  if (!participantsInForm.length) {
-    return allTeamMembers.value;
+  const participantsInFormIds = new Set(
+    (currentEditEvent.value.participants || []).map((p) => p.uniqueId)
+  );
+
+  let availableMembers = allContacts.value.filter(
+    (member) => !participantsInFormIds.has(member.uniqueId)
+  );
+
+  if (participantSearchQuery.value) {
+    const query = participantSearchQuery.value.toLowerCase();
+    availableMembers = availableMembers.filter(
+      (member) =>
+        member.name.toLowerCase().includes(query) ||
+        (member.specialty && member.specialty.toLowerCase().includes(query))
+    );
   }
 
-  const addedIds = new Set(participantsInForm.map((p) => p.uniqueId));
-  return allTeamMembers.value.filter(
-    (member) => !addedIds.has(member.uniqueId)
-  );
+  return availableMembers;
 });
 
-const loadAllData = async () => {
+const fetchEventDocuments = async () => {
+  documentsLoading.value = true;
+  try {
+    const res = await apiService.getDocumentsForEvent(props.eventId);
+    if (res.success) {
+      eventDocuments.value = res.data;
+    }
+  } catch (error) {
+    console.error("Failed to fetch event documents:", error);
+    eventDocuments.value = [];
+  } finally {
+    documentsLoading.value = false;
+  }
+};
+
+const downloadDocument = async (docId) => {
+  try {
+    await apiService.downloadDocument(docId);
+  } catch (error) {
+    console.error("Failed to download document:", error);
+    alert(
+      `Ошибка при скачивании документа: ${
+        error.message || "Неизвестная ошибка"
+      }`
+    );
+  }
+};
+
+const handleGenerateDocument = async () => {
+  if (!selectedTemplateId.value) {
+    alert("Пожалуйста, выберите шаблон.");
+    return;
+  }
+  isGenerating.value = true;
+  try {
+    const res = await apiService.generateDocument({
+      eventId: event.value.idevent,
+      templateId: selectedTemplateId.value,
+    });
+
+    if (res.success) {
+      closeGenerateDocModal();
+      await fetchEventDocuments();
+    }
+  } catch (error) {
+    console.error("Ошибка при генерации документа:", error);
+    alert(`Не удалось создать документ: ${error.message}`);
+  } finally {
+    isGenerating.value = false;
+  }
+};
+
+const fetchEventData = async () => {
+  if (!props.eventId) {
+    loading.value = false;
+    return;
+  }
   loading.value = true;
   NProgress.start();
   try {
-    const eventId = route.params.eventId;
-
-    // Сначала получаем основное событие
-    const eventRes = await apiService.getEvent(eventId);
-    if (eventRes.success) {
-      event.value = eventRes.data;
-    } else {
-      // Если событие не найдено, нет смысла грузить остальное
-      console.error("Failed to load event:", eventRes.message);
+    // 1. Сначала получаем основные данные о мероприятии
+    const res = await apiService.getEvent(props.eventId);
+    if (!res.success) {
       event.value = null;
-      throw new Error(eventRes.message);
+      // Можно выбросить ошибку, чтобы она была поймана в catch блоке
+      throw new Error("Не удалось получить данные о мероприятии");
     }
 
-    // Теперь, когда событие есть, грузим все остальное
-    const [
-      participantsRes,
-      teamMembersRes,
-      categoriesRes,
-      venuesRes,
-      customersRes,
-    ] = await Promise.all([
-      apiService.getEventParticipants(eventId),
-      apiService.getTeamMembers(),
-      apiService.getEventCategories(),
-      apiService.getVenues(),
-      apiService.getCustomers(),
-    ]);
+    event.value = res.data;
+    eventParticipants.value = res.data.participants || [];
 
-    // Присваиваем загруженные данные
-    if (participantsRes.success) {
-      eventParticipants.value = participantsRes.data;
-    } else {
-      eventParticipants.value = [];
-    }
-    event.value.participants = eventParticipants.value; // Добавляем участников к событию
-
-    if (teamMembersRes.success) {
-      allTeamMembers.value = teamMembersRes.data;
-    } else {
-      allTeamMembers.value = [];
-    }
-
-    if (categoriesRes.success) {
-      eventCategories.value = categoriesRes.data;
-    } else {
-      eventCategories.value = [];
-    }
-
-    if (venuesRes.success) {
-      venuesList.value = venuesRes.data;
-    } else {
-      venuesList.value = [];
-    }
-
-    if (customersRes.success) {
-      customersList.value = customersRes.data;
-    } else {
-      customersList.value = [];
-    }
+    // 2. После успеха, параллельно загружаем все остальные данные
+    await Promise.all([fetchPrerequisites(), fetchEventDocuments()]);
   } catch (error) {
-    console.error("Error loading data for EventDetail:", error);
-    event.value = null; // Убедимся, что при любой ошибке event сброшен
+    console.error("Не удалось загрузить данные о мероприятии:", error);
+    event.value = null; // Убедимся, что при ошибке event сбрасывается
   } finally {
     loading.value = false;
     NProgress.done();
   }
 };
 
-onMounted(() => {
-  loadAllData();
-});
+const fetchPrerequisites = async () => {
+  try {
+    const [teamMembersRes, categoriesRes, venuesRes, customersRes] =
+      await Promise.all([
+        apiService.getTeamMembers(),
+        apiService.getEventCategories(),
+        apiService.getVenues(),
+        apiService.getCustomers(),
+      ]);
 
-// --- ЛОГИКА ОТОБРАЖЕНИЯ (для главной страницы, не модалки) ---
-const getCategoryName = (id) =>
-  eventCategories.value.find((c) => c.idcategory_event === id)?.name ||
-  "Не указана";
-const getVenueName = (id) =>
-  venuesList.value.find((v) => v.idvenue === id)?.name_venue || "Не указано";
-const getCustomerName = (id) =>
-  customersList.value.find((c) => c.idcustomer === id)?.name_customer ||
-  "Не указан";
+    allContacts.value = teamMembersRes.success ? teamMembersRes.data : [];
+    eventCategories.value = categoriesRes.success ? categoriesRes.data : [];
+    venuesList.value = venuesRes.success ? venuesRes.data : [];
+    customersList.value = customersRes.success ? customersRes.data : [];
+  } catch (error) {
+    console.error("Error loading supporting data:", error);
+  }
+};
 
-// --- ЛОГИКА РЕДАКТИРОВАНИЯ ---
 const openEditEventModal = (eventToEdit) => {
   const dateForInput = eventToEdit.date
     ? new Date(eventToEdit.date).toISOString().slice(0, 16)
     : "";
-  currentEditEvent.value = { ...eventToEdit, date: dateForInput };
+  const participantsCopy = JSON.parse(
+    JSON.stringify(eventToEdit.participants || [])
+  );
+  currentEditEvent.value = {
+    ...eventToEdit,
+    date: dateForInput,
+    participants: participantsCopy,
+  };
   isEditModalOpen.value = true;
 };
 
@@ -472,29 +607,53 @@ const closeEditModal = () => {
 };
 
 const handleUpdateEvent = async () => {
-  if (!currentEditEvent.value || !currentEditEvent.value.idevent) return;
+  if (!currentEditEvent.value) return;
+  NProgress.start();
   try {
     const response = await apiService.updateEvent(
       currentEditEvent.value.idevent,
       currentEditEvent.value
     );
     if (response.success) {
-      await loadAllData();
       closeEditModal();
+      await fetchEventData();
     } else {
       console.error("Failed to update event:", response.message);
+      alert("Не удалось обновить мероприятие.");
     }
   } catch (error) {
     console.error("Error saving event:", error);
+    alert("Произошла ошибка при сохранении.");
+  } finally {
+    NProgress.done();
   }
 };
 
-// TODO: Реализовать логику удаления
-const confirmDeleteEvent = (eventToDelete) => {
-  console.log("Delete not implemented", eventToDelete);
+const confirmDeleteEvent = async (eventToDelete) => {
+  if (
+    confirm(
+      `Вы уверены, что хотите удалить мероприятие "${eventToDelete.project_name}"? Это действие необратимо.`
+    )
+  ) {
+    NProgress.start();
+    try {
+      const response = await apiService.deleteEvent(eventToDelete.idevent);
+      if (response.success) {
+        router.push("/events");
+      } else {
+        alert(`Не удалось удалить мероприятие: ${response.message}`);
+      }
+    } catch (error) {
+      console.error("Error deleting event:", error);
+      alert("Произошла ошибка при удалении.");
+    } finally {
+      NProgress.done();
+    }
+  }
 };
 
 const openAddParticipantModal = () => {
+  participantSearchQuery.value = "";
   isAddParticipantModalOpen.value = true;
 };
 
@@ -506,41 +665,70 @@ function addParticipantToForm(member) {
   if (!currentEditEvent.value.participants) {
     currentEditEvent.value.participants = [];
   }
-  const isAlreadyAdded = currentEditEvent.value.participants.some(
-    (p) => p.uniqueId === member.uniqueId
-  );
-  if (!isAlreadyAdded) {
+  if (
+    !currentEditEvent.value.participants.some(
+      (p) => p.uniqueId === member.uniqueId
+    )
+  ) {
     currentEditEvent.value.participants.push(member);
-  } else {
-    alert("Этот участник уже в команде.");
   }
 }
 
 function removeParticipantFromForm(participantUniqueId) {
-  if (currentEditEvent.value.participants) {
-    currentEditEvent.value.participants =
-      currentEditEvent.value.participants.filter(
-        (p) => p.uniqueId !== participantUniqueId
-      );
-  }
+  currentEditEvent.value.participants =
+    currentEditEvent.value.participants.filter(
+      (p) => p.uniqueId !== participantUniqueId
+    );
 }
 
-const getTeamMemberNameById = (uniqueId) => {
-  const member = allTeamMembers.value.find((m) => m.uniqueId === uniqueId);
-  return member ? member.name : "Неизвестный участник";
+const openGenerateDocModal = () => {
+  isGenerateDocModalOpen.value = true;
+  fetchDocumentTemplates();
 };
+
+const closeGenerateDocModal = () => {
+  isGenerateDocModalOpen.value = false;
+  selectedTemplateId.value = null;
+};
+
+const fetchDocumentTemplates = async () => {
+  try {
+    const res = await apiService.getDocumentTemplates();
+    if (res.success) {
+      documentTemplates.value = res.data;
+    } else {
+      documentTemplates.value = [];
+    }
+  } catch (error) {
+    console.error("Failed to fetch document templates", error);
+    documentTemplates.value = [];
+  }
+};
+
+onMounted(() => {
+  fetchEventData();
+});
+
+const getCategoryName = (id) =>
+  eventCategories.value.find((c) => c.idcategory_event === id)?.name ||
+  "Не указана";
+const getVenueName = (id) =>
+  venuesList.value.find((v) => v.idvenue === id)?.name_venue || "Не указано";
+const getCustomerName = (id) =>
+  customersList.value.find((c) => c.idcustomer === id)?.name_customer ||
+  "Не указан";
 
 const displaySelectedTeamMembers = computed(() => {
   if (
-    event.value &&
-    event.value.participants &&
-    event.value.participants.length > 0
+    Array.isArray(eventParticipants.value) &&
+    eventParticipants.value.length > 0
   ) {
-    return event.value.participants
-      .map((p) => getTeamMemberNameById(p.uniqueId))
-      .join(", ");
+    return eventParticipants.value.map((p) => p.name).join(", ");
   }
-  return "Нет данных о команде";
+  if (typeof eventParticipants.value === "string" && eventParticipants.value) {
+    return eventParticipants.value;
+  }
+  return "Команда не назначена.";
 });
 </script>
 
@@ -565,5 +753,8 @@ const displaySelectedTeamMembers = computed(() => {
 }
 .label-form {
   @apply block text-sm font-medium text-gray-700 mb-1;
+}
+.btn-sm {
+  @apply py-1 px-2 text-sm;
 }
 </style>

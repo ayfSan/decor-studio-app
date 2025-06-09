@@ -2,17 +2,17 @@
   <div class="p-0">
     <div class="flex justify-between items-center mb-6">
       <h1 class="text-3xl font-bold text-gray-800">Движение ДС</h1>
-      <button
-        @click="openAddModal"
-        class="bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-colors duration-200 flex items-center"
-      >
+      <button @click="openAddModal" class="btn-primary flex items-center">
         <span class="material-symbols-outlined md:mr-2">add</span>
         <span class="hidden md:inline">Добавить операцию</span>
       </button>
     </div>
 
+    <div v-if="isLoading" class="text-center py-10 text-gray-500">
+      Загрузка операций...
+    </div>
     <div
-      v-if="Object.keys(groupedCashflowItems).length === 0"
+      v-else-if="Object.keys(groupedCashflowItems).length === 0"
       class="text-center py-10 text-gray-500"
     >
       <p>Нет данных для отображения.</p>
@@ -26,33 +26,28 @@
       >
         <h2
           @click="toggleGroup(eventIdKey)"
-          class="text-xl font-semibold text-gray-700 p-4 border-b cursor-pointer flex justify-between items-center select-none hover:bg-gray-50 transition-colors duration-150"
-          :class="{
-            'border-primary-200 bg-primary-50': isGroupExpanded(eventIdKey),
-          }"
+          class="text-xl font-semibold text-gray-700 p-4 border-b cursor-pointer flex justify-between items-center select-none hover:bg-gray-50"
         >
           {{ group.name }}
           <span
-            class="material-symbols-outlined text-gray-500 transform transition-transform duration-200"
+            class="material-symbols-outlined text-gray-500 transform transition-transform"
             :class="{ 'rotate-180': isGroupExpanded(eventIdKey) }"
+            >expand_more</span
           >
-            expand_more
-          </span>
         </h2>
         <div v-if="isGroupExpanded(eventIdKey)" class="p-4 space-y-4">
           <div
             v-if="group.items.length === 0"
             class="text-sm text-gray-500 italic"
           >
-            Нет операций для этого мероприятия.
+            Нет операций для этого элемента.
           </div>
           <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div
               v-for="item in group.items"
               :key="item.idcashflow"
-              class="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col border border-gray-200 hover:shadow-xl transition-shadow duration-200"
+              class="bg-white rounded-lg shadow-lg overflow-hidden border border-gray-200"
             >
-              <!-- Заголовок -->
               <div
                 class="p-4 flex justify-between items-start"
                 :class="{
@@ -70,7 +65,7 @@
                       'text-gray-700': !item.income && !item.expense,
                     }"
                   >
-                    {{ item.transaction || "Операция" }} #{{ item.idcashflow }}
+                    {{ item.transaction || "Операция" }}
                   </h3>
                   <p class="text-sm text-gray-600 mt-1">
                     {{ formatDate(item.date) }}
@@ -91,8 +86,6 @@
                   </p>
                 </div>
               </div>
-
-              <!-- Основной контент -->
               <div class="p-4 space-y-3 flex-grow">
                 <p class="text-sm">
                   <strong class="font-medium">Счет:</strong>
@@ -104,14 +97,11 @@
                     getCategoryName(item.category_cashflow_idcategory_cashflow)
                   }}
                 </p>
-                <!-- Event name is already in the group title, so event_idevent might be redundant here -->
                 <p v-if="item.note" class="text-sm">
                   <strong class="font-medium">Примечание:</strong>
                   {{ item.note }}
                 </p>
               </div>
-
-              <!-- Футер с кнопками -->
               <div class="p-4 border-t border-gray-200 bg-gray-50">
                 <div class="flex justify-end space-x-3">
                   <button
@@ -122,7 +112,7 @@
                     <span class="text-sm">Изменить</span>
                   </button>
                   <button
-                    @click="confirmDeleteItem(item)"
+                    @click="confirmDeleteItem(item.idcashflow)"
                     class="btn-icon-text text-red-500 hover:text-red-700"
                   >
                     <span class="material-symbols-outlined text-lg"
@@ -141,7 +131,7 @@
     <!-- Modal for Add/Edit -->
     <div
       v-if="isModalOpen"
-      class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex justify-center items-center z-50 p-4"
+      class="fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full flex justify-center items-center z-50 p-4"
     >
       <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
         <h2 class="text-2xl font-bold mb-6 text-gray-800">
@@ -152,11 +142,7 @@
           class="grid grid-cols-1 md:grid-cols-2 gap-6"
         >
           <div>
-            <label
-              for="date"
-              class="block text-sm font-medium text-gray-700 mb-1"
-              >Дата</label
-            >
+            <label for="date" class="label-form">Дата</label>
             <input
               type="datetime-local"
               id="date"
@@ -166,24 +152,17 @@
             />
           </div>
           <div>
-            <label
-              for="transaction"
-              class="block text-sm font-medium text-gray-700 mb-1"
-              >Транзакция</label
-            >
+            <label for="transaction" class="label-form">Описание</label>
             <input
               type="text"
               id="transaction"
               v-model="currentItem.transaction"
               class="input-field"
+              placeholder="Например, предоплата"
             />
           </div>
           <div>
-            <label
-              for="account"
-              class="block text-sm font-medium text-gray-700 mb-1"
-              >Счет</label
-            >
+            <label for="account" class="label-form">Счет</label>
             <select
               id="account"
               v-model.number="currentItem.account_cashflow_idaccount_cashflow"
@@ -201,11 +180,7 @@
             </select>
           </div>
           <div>
-            <label
-              for="category"
-              class="block text-sm font-medium text-gray-700 mb-1"
-              >Категория</label
-            >
+            <label for="category" class="label-form">Категория</label>
             <select
               id="category"
               v-model.number="currentItem.category_cashflow_idcategory_cashflow"
@@ -223,11 +198,27 @@
             </select>
           </div>
           <div>
-            <label
-              for="event"
-              class="block text-sm font-medium text-gray-700 mb-1"
-              >Событие</label
-            >
+            <label for="income" class="label-form">Приход</label>
+            <input
+              type="number"
+              step="0.01"
+              id="income"
+              v-model.number="currentItem.income"
+              class="input-field"
+            />
+          </div>
+          <div>
+            <label for="expense" class="label-form">Расход</label>
+            <input
+              type="number"
+              step="0.01"
+              id="expense"
+              v-model.number="currentItem.expense"
+              class="input-field"
+            />
+          </div>
+          <div class="md:col-span-2">
+            <label for="event" class="label-form">Событие (опционально)</label>
             <select
               id="event"
               v-model.number="currentItem.event_idevent"
@@ -243,49 +234,16 @@
               </option>
             </select>
           </div>
-          <div>
-            <label
-              for="note"
-              class="block text-sm font-medium text-gray-700 mb-1"
-              >Примечание</label
-            >
+          <div class="md:col-span-2">
+            <label for="note" class="label-form">Примечание</label>
             <textarea
               id="note"
               v-model="currentItem.note"
-              rows="1"
+              rows="2"
               class="input-field"
             ></textarea>
           </div>
-          <div>
-            <label
-              for="income"
-              class="block text-sm font-medium text-gray-700 mb-1"
-              >Приход</label
-            >
-            <input
-              type="number"
-              step="0.01"
-              id="income"
-              v-model.number="currentItem.income"
-              class="input-field"
-            />
-          </div>
-          <div>
-            <label
-              for="expense"
-              class="block text-sm font-medium text-gray-700 mb-1"
-              >Расход</label
-            >
-            <input
-              type="number"
-              step="0.01"
-              id="expense"
-              v-model.number="currentItem.expense"
-              class="input-field"
-            />
-          </div>
-
-          <div class="md:col-span-2 mt-6 flex justify-end space-x-3">
+          <div class="md:col-span-2 mt-4 flex justify-end space-x-4">
             <button type="button" @click="closeModal" class="btn-secondary">
               Отмена
             </button>
@@ -301,292 +259,181 @@
 
 <script setup>
 import { ref, computed, onMounted } from "vue";
+import apiService from "@/services/api.service";
+import { formatCurrency, formatDate } from "@/utils/formatters";
+import NProgress from "nprogress";
 
-const cashflowItems = ref([
-  {
-    idcashflow: 1,
-    date: "2024-05-15T10:00:00.000Z",
-    transaction: "Оплата аренды зала",
-    account_cashflow_idaccount_cashflow: 1,
-    category_cashflow_idcategory_cashflow: 1,
-    event_idevent: 101,
-    income: 0,
-    expense: 50000,
-    note: "Аренда для свадьбы Анны и Петра",
-  },
-  {
-    idcashflow: 2,
-    date: "2024-05-16T12:30:00.000Z",
-    transaction: "Получение предоплаты",
-    account_cashflow_idaccount_cashflow: 2,
-    category_cashflow_idcategory_cashflow: 4,
-    event_idevent: 101,
-    income: 100000,
-    expense: 0,
-    note: "Предоплата от Анны Петровой",
-  },
-  {
-    idcashflow: 3,
-    date: "2024-05-20T14:00:00.000Z",
-    transaction: "Закупка материалов для декора",
-    account_cashflow_idaccount_cashflow: 1,
-    category_cashflow_idcategory_cashflow: 3,
-    event_idevent: null,
-    income: 0,
-    expense: 15000,
-    note: "Ткани, ленты",
-  },
-  {
-    idcashflow: 4,
-    date: "2024-06-10T09:00:00.000Z",
-    transaction: "Оплата кейтеринга",
-    account_cashflow_idaccount_cashflow: 3,
-    category_cashflow_idcategory_cashflow: 1,
-    event_idevent: 102,
-    income: 0,
-    expense: 120000,
-    note: "Юбилей ТехноПрорыв",
-  },
-  {
-    idcashflow: 5,
-    date: "2024-06-12T18:00:00.000Z",
-    transaction: "Гонорар ведущему",
-    account_cashflow_idaccount_cashflow: 1,
-    category_cashflow_idcategory_cashflow: 2,
-    event_idevent: 102,
-    income: 0,
-    expense: 30000,
-  },
-  {
-    idcashflow: 6,
-    date: new Date().toISOString(),
-    transaction: "Текущий доход",
-    account_cashflow_idaccount_cashflow: 2,
-    category_cashflow_idcategory_cashflow: 4,
-    event_idevent: 101,
-    income: 5000,
-    expense: 0,
-  },
-  {
-    idcashflow: 7,
-    date: new Date(Date.now() - 86400000 * 5).toISOString(),
-    transaction: "Прошлый расход без события",
-    account_cashflow_idaccount_cashflow: 1,
-    category_cashflow_idcategory_cashflow: 3,
-    event_idevent: null,
-    income: 0,
-    expense: 2500,
-  },
-]);
+// Main data stores
+const cashflowItems = ref([]);
+const accounts = ref([]);
+const categories = ref([]);
+const eventsList = ref([]);
+const isLoading = ref(true);
 
-const accounts = ref([
-  { idaccount_cashflow: 1, name: "Наличные RUB" },
-  { idaccount_cashflow: 2, name: "Карта Сбербанк" },
-  { idaccount_cashflow: 3, name: 'Расчетный счет ООО "Ромашка"' },
-]);
-
-const categories = ref([
-  { idcategory_cashflow: 1, name: "Аренда" },
-  { idcategory_cashflow: 2, name: "Гонорары" },
-  { idcategory_cashflow: 3, name: "Материалы" },
-  { idcategory_cashflow: 4, name: "Доход от мероприятия" },
-]);
-
-// Mock events list - needed for grouping by event name
-const eventsList = ref([
-  { idevent: 101, project_name: "Свадьба Анны и Петра" },
-  { idevent: 102, project_name: 'Юбилей компании "ТехноПрорыв"' },
-  { idevent: 103, project_name: "Конференция Разработчиков" }, // Example, may not have cashflow items yet
-]);
-
+// Modal state
 const isModalOpen = ref(false);
-const currentItem = ref({});
 const isEditMode = ref(false);
+const currentItem = ref({});
 
-const defaultItem = {
-  date: new Date().toISOString().slice(0, 16),
-  transaction: "",
-  account_cashflow_idaccount_cashflow: null,
-  category_cashflow_idcategory_cashflow: null,
-  event_idevent: null,
-  income: 0,
-  expense: 0,
-  note: "",
+// Accordion state
+const expandedGroups = ref({});
+
+// --- DATA LOADING ---
+const loadInitialData = async () => {
+  isLoading.value = true;
+  NProgress.start();
+  try {
+    const [cashflowRes, accountsRes, categoriesRes, eventsRes] =
+      await Promise.all([
+        apiService.getCashflow(),
+        apiService.getAccounts(),
+        apiService.getCashflowCategories(),
+        apiService.getEvents(),
+      ]);
+
+    if (cashflowRes.success) cashflowItems.value = cashflowRes.data;
+    if (accountsRes.success) accounts.value = accountsRes.data;
+    if (categoriesRes.success) categories.value = categoriesRes.data;
+    if (eventsRes.success) eventsList.value = eventsRes.data;
+
+    // Expand all groups by default after loading
+    groupedCashflowItems.value.forEach((group) => {
+      toggleGroup(group.id);
+    });
+  } catch (error) {
+    console.error("Failed to load initial data:", error);
+    // Handle error display to the user
+  } finally {
+    isLoading.value = false;
+    NProgress.done();
+  }
 };
 
-// Accordion state for event groups
-const expandedGroups = ref({}); // Stores { 'event-101': true, 'event-null': false }
+onMounted(loadInitialData);
 
-const getEventNameById = (eventId) => {
-  if (eventId === null || eventId === undefined) return "Прочие операции";
-  const event = eventsList.value.find((e) => e.idevent === eventId);
-  return event ? event.project_name : "Неизвестное событие";
-};
+// --- DATA COMPUTATION AND HELPERS ---
+const getAccountName = (id) =>
+  accounts.value.find((a) => a.idaccount_cashflow === id)?.name || "N/A";
+const getCategoryName = (id) =>
+  categories.value.find((c) => c.idcategory_cashflow === id)?.name || "N/A";
+const getEventName = (id) =>
+  eventsList.value.find((e) => e.idevent === id)?.project_name ||
+  "Без мероприятия";
 
 const groupedCashflowItems = computed(() => {
   const groups = {};
-  // Sort items by date descending before grouping
-  const sortedItems = [...cashflowItems.value].sort(
-    (a, b) => new Date(b.date) - new Date(a.date)
-  );
 
-  for (const item of sortedItems) {
-    const eventIdKey =
-      item.event_idevent === null || item.event_idevent === undefined
-        ? "null"
-        : String(item.event_idevent);
-    if (!groups[eventIdKey]) {
-      groups[eventIdKey] = {
-        name: getEventNameById(item.event_idevent),
+  // Group by event
+  cashflowItems.value.forEach((item) => {
+    const eventId = item.event_idevent;
+    if (!groups[eventId]) {
+      groups[eventId] = {
+        name:
+          eventId === null
+            ? "Операции без привязки к событию"
+            : getEventName(eventId),
         items: [],
       };
     }
-    groups[eventIdKey].items.push(item);
-  }
+    groups[eventId].items.push(item);
+  });
 
-  // Initialize expanded state for new groups (e.g., 'Прочие операции' expanded by default)
-  Object.keys(groups).forEach((key) => {
-    const groupId = `event-${key}`;
-    if (expandedGroups.value[groupId] === undefined) {
-      expandedGroups.value[groupId] = key === "null"; // Expand 'Прочие операции' by default
+  // Sort groups: events first, then "no event"
+  const sortedGroups = Object.values(groups).sort((a, b) => {
+    if (a.id === null) return 1; // "No event" group to the end
+    if (b.id === null) return -1;
+    // You might want to sort events by date or name
+    const eventA = eventsList.value.find((e) => e.idevent === a.id);
+    const eventB = eventsList.value.find((e) => e.idevent === b.id);
+    if (eventA && eventB) {
+      return new Date(eventB.date) - new Date(eventA.date); // Sort by most recent event date
     }
+    return 0;
   });
 
-  // Order groups: specific events first, then 'Прочие операции'
-  const orderedGroupKeys = Object.keys(groups).sort((a, b) => {
-    if (a === "null") return 1; // 'null' (Прочие операции) always last
-    if (b === "null") return -1;
-    // Optional: sort events by name or other criteria if needed
-    return groups[a].name.localeCompare(groups[b].name);
-  });
-
-  const orderedGroups = {};
-  orderedGroupKeys.forEach((key) => {
-    orderedGroups[key] = groups[key];
-  });
-
-  return orderedGroups;
+  return sortedGroups;
 });
 
-const toggleGroup = (eventIdKey) => {
-  const groupId = `event-${eventIdKey}`;
+const toggleGroup = (groupId) => {
   expandedGroups.value[groupId] = !expandedGroups.value[groupId];
 };
+const isGroupExpanded = (groupId) => expandedGroups.value[groupId] === true;
 
-const isGroupExpanded = (eventIdKey) => {
-  const groupId = `event-${eventIdKey}`;
-  return !!expandedGroups.value[groupId]; // Ensure boolean, default to false if undefined
-};
-
-function formatDate(dateString) {
-  if (!dateString) return "N/A";
-  const options = {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  };
-  return new Date(dateString).toLocaleDateString("ru-RU", options);
-}
-
-function formatCurrency(value) {
-  const val = parseFloat(value);
-  if (isNaN(val)) return "-";
-  return val.toLocaleString("ru-RU", {
-    style: "currency",
-    currency: "RUB",
-    minimumFractionDigits: 2,
-  });
-}
-
-const getAccountName = (id) => {
-  const account = accounts.value.find((acc) => acc.idaccount_cashflow === id);
-  return account ? account.name : "N/A";
-};
-
-const getCategoryName = (id) => {
-  const category = categories.value.find(
-    (cat) => cat.idcategory_cashflow === id
-  );
-  return category ? category.name : "N/A";
-};
-
-function openAddModal() {
+// --- MODAL AND CRUD LOGIC ---
+const openAddModal = () => {
   isEditMode.value = false;
   currentItem.value = {
-    ...defaultItem,
     date: new Date().toISOString().slice(0, 16),
+    income: 0,
+    expense: 0,
+    account_cashflow_idaccount_cashflow: null,
+    category_cashflow_idcategory_cashflow: null,
+    event_idevent: null,
   };
   isModalOpen.value = true;
-}
+};
 
-function openEditModal(item) {
+const openEditModal = (item) => {
   isEditMode.value = true;
-  const dateForInput = item.date
-    ? new Date(item.date).toISOString().slice(0, 16)
-    : "";
-  currentItem.value = { ...item, date: dateForInput };
+  currentItem.value = {
+    ...item,
+    date: item.date ? new Date(item.date).toISOString().slice(0, 16) : null,
+  };
   isModalOpen.value = true;
-}
+};
 
-function closeModal() {
+const closeModal = () => {
   isModalOpen.value = false;
-}
+  currentItem.value = {};
+};
 
-function saveItem() {
-  if (currentItem.value.date) {
-    const localDate = new Date(currentItem.value.date);
-    currentItem.value.date = new Date(
-      localDate.getTime() - localDate.getTimezoneOffset() * 60000
-    ).toISOString();
-  }
-  if (isEditMode.value) {
-    const index = cashflowItems.value.findIndex(
-      (i) => i.idcashflow === currentItem.value.idcashflow
-    );
-    if (index !== -1) {
-      cashflowItems.value[index] = { ...currentItem.value };
+const saveItem = async () => {
+  NProgress.start();
+  try {
+    const dataToSend = {
+      ...currentItem.value,
+      income: currentItem.value.income || 0,
+      expense: currentItem.value.expense || 0,
+    };
+
+    if (isEditMode.value) {
+      const response = await apiService.updateCashflow(
+        dataToSend.idcashflow,
+        dataToSend
+      );
+      if (!response.success) throw new Error(response.message);
+    } else {
+      const response = await apiService.createCashflowTransaction(dataToSend);
+      if (!response.success) throw new Error(response.message);
     }
-  } else {
-    currentItem.value.idcashflow =
-      cashflowItems.value.length > 0
-        ? Math.max(...cashflowItems.value.map((i) => i.idcashflow)) + 1
-        : 1;
-    cashflowItems.value.push({ ...currentItem.value });
+    await loadInitialData();
+    closeModal();
+  } catch (error) {
+    console.error("Failed to save cashflow item:", error);
+    alert(`Ошибка сохранения: ${error.message}`);
+  } finally {
+    NProgress.done();
   }
-  closeModal();
-}
+};
 
-function confirmDeleteItem(itemToDelete) {
-  if (
-    confirm(
-      `Вы уверены, что хотите удалить операцию "${itemToDelete.transaction}"?`
-    )
-  ) {
-    deleteItem(itemToDelete);
+const confirmDeleteItem = async (id) => {
+  if (confirm("Вы уверены, что хотите удалить эту операцию?")) {
+    NProgress.start();
+    try {
+      const response = await apiService.deleteCashflow(id);
+      if (!response.success) throw new Error(response.message);
+      await loadInitialData();
+    } catch (error) {
+      console.error("Failed to delete cashflow item:", error);
+      alert(`Ошибка удаления: ${error.message}`);
+    } finally {
+      NProgress.done();
+    }
   }
-}
-
-function deleteItem(itemToDelete) {
-  cashflowItems.value = cashflowItems.value.filter(
-    (i) => i.idcashflow !== itemToDelete.idcashflow
-  );
-}
-
-// Initialize expanded groups on mount after initial computation
-onMounted(() => {
-  const initialGroups = groupedCashflowItems.value;
-});
+};
 </script>
 
 <style scoped>
-.th-cell {
-  @apply px-6 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider;
-}
-.td-cell {
-  @apply px-6 py-4 border-b border-gray-200 text-sm;
-}
 .input-field {
   @apply mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-600 focus:border-primary-600 sm:text-sm;
 }
@@ -594,12 +441,12 @@ onMounted(() => {
   @apply block text-sm font-medium text-gray-700 mb-1;
 }
 .btn-primary {
-  @apply bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-colors duration-200 flex items-center justify-center;
+  @apply bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-colors duration-200;
 }
 .btn-secondary {
-  @apply bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-lg shadow-md transition-colors duration-200 flex items-center justify-center;
+  @apply bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-lg shadow-sm transition-colors duration-200;
 }
 .btn-icon-text {
-  @apply flex items-center space-x-1 transition-colors duration-200;
+  @apply inline-flex items-center space-x-2 transition-colors duration-150;
 }
 </style>

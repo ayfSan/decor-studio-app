@@ -160,6 +160,21 @@
           >
           <span>Документы</span>
         </router-link>
+        <router-link
+          to="/directory/document-templates"
+          class="nav-link"
+          :class="{
+            'active-link': $route.path.startsWith(
+              '/directory/document-templates'
+            ),
+          }"
+          @click="$emit('close-menu')"
+        >
+          <span class="material-symbols-outlined text-primary-600 mr-3"
+            >file_present</span
+          >
+          <span>Шаблоны документов</span>
+        </router-link>
       </div>
 
       <!-- Администрирование -->
@@ -189,17 +204,19 @@
           >
             <div
               v-for="event_item in displayUpcomingEvents"
-              :key="event_item.id"
+              :key="event_item.idevent"
             >
               <router-link
                 :to="{
                   name: 'EventDetail',
-                  params: { eventId: event_item.id },
+                  params: { eventId: event_item.idevent },
                 }"
                 @click="$emit('close-menu')"
                 class="hover:underline"
               >
-                <p class="font-medium">• {{ event_item.name }}</p>
+                <p class="font-medium">
+                  • {{ event_item.project_name || "Мероприятие" }}
+                </p>
                 <p class="text-xs text-primary-600 ml-3">
                   {{ formatDate(event_item.date) }}
                 </p>
@@ -214,49 +231,27 @@
 </template>
 
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
+import apiService from "@/services/api.service.js";
 
 defineEmits(["close-menu"]);
 
-const allEventsForNavbar = ref([
-  {
-    id: 1,
-    name: "Свадьба Анны и Петра",
-    date: "2024-07-15T14:00:00.000Z",
-  },
-  {
-    id: 2,
-    name: 'Юбилей компании "ТехноПрорыв"',
-    date: "2024-08-20T18:00:00.000Z",
-  },
-  {
-    id: 3,
-    name: "Новогодний корпоратив",
-    date: "2023-12-10T12:00:00.000Z",
-  },
-  {
-    id: 4,
-    name: "Конференция Разработчиков",
-    date: "2024-07-25T10:00:00.000Z",
-  },
-  {
-    id: 5,
-    name: "День Рождения Ивана",
-    date: new Date(Date.now() + 86400000 * 5).toISOString(),
-  },
-  {
-    id: 6,
-    name: "Стратегическая сессия",
-    date: new Date(Date.now() + 86400000 * 12).toISOString(),
-  },
-]);
+const upcomingEvents = ref([]);
+
+onMounted(async () => {
+  try {
+    const res = await apiService.getUpcomingEvents();
+    if (res.success) {
+      upcomingEvents.value = res.data;
+    }
+  } catch (error) {
+    console.error("Failed to load upcoming events for navbar:", error);
+  }
+});
 
 const displayUpcomingEvents = computed(() => {
-  const now = new Date();
-  return allEventsForNavbar.value
-    .filter((event) => new Date(event.date) >= now)
-    .sort((a, b) => new Date(a.date) - new Date(b.date))
-    .slice(0, 3);
+  // API already returns sorted upcoming events, we just slice for display
+  return upcomingEvents.value.slice(0, 3);
 });
 
 function formatDate(dateString) {

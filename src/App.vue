@@ -27,28 +27,33 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="flex min-h-screen bg-white text-gray-900">
-    <!-- Mobile menu button -->
-    <button
-      @click.stop="isSidebarOpen = !isSidebarOpen"
-      class="fixed bottom-4 right-4 z-50 md:hidden bg-primary-600 text-white p-3 rounded-full shadow-lg hover:bg-primary-700 transition-colors"
-    >
-      <span class="material-symbols-outlined">{{
-        isSidebarOpen ? "close" : "menu"
-      }}</span>
-    </button>
+    <template v-if="!$route.meta.hideNavbar">
+      <!-- Mobile menu button -->
+      <button
+        @click.stop="isSidebarOpen = !isSidebarOpen"
+        class="fixed bottom-4 right-4 z-50 md:hidden bg-primary-600 text-white p-3 rounded-full shadow-lg hover:bg-primary-700 transition-colors"
+      >
+        <span class="material-symbols-outlined">{{
+          isSidebarOpen ? "close" : "menu"
+        }}</span>
+      </button>
 
-    <!-- Sidebar -->
-    <Navbar
-      :class="{
-        'translate-x-0': isSidebarOpen,
-        '-translate-x-full': !isSidebarOpen,
-      }"
-      class="navbar-container fixed inset-0 md:sticky md:top-0 md:translate-x-0 transition-transform duration-300 ease-in-out z-40 w-16 md:w-64"
-      @close-menu="isSidebarOpen = false"
-    />
+      <!-- Sidebar -->
+      <Navbar
+        :class="{
+          'translate-x-0': isSidebarOpen,
+          '-translate-x-full': !isSidebarOpen,
+        }"
+        class="navbar-container fixed inset-0 md:sticky md:top-0 md:translate-x-0 transition-transform duration-300 ease-in-out z-40 w-16 md:w-64"
+        @close-menu="isSidebarOpen = false"
+      />
+    </template>
 
     <!-- Main content -->
-    <div class="flex-1 p-4 md:pl-4 w-full">
+    <div
+      class="flex-1 w-full"
+      :class="{ 'p-4 md:pl-4': !$route.meta.hideNavbar }"
+    >
       <router-view></router-view>
     </div>
   </div>

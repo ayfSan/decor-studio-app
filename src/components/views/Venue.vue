@@ -2,16 +2,12 @@
   <div class="p-0">
     <div class="flex justify-between items-center mb-6">
       <h1 class="text-3xl font-bold text-gray-800">Места проведения</h1>
-      <button
-        @click="openAddModal"
-        class="bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-colors duration-200 flex items-center"
-      >
+      <button @click="openAddModal" class="btn-primary flex items-center">
         <span class="material-symbols-outlined md:mr-2">add</span>
         <span class="hidden md:inline">Добавить место</span>
       </button>
     </div>
 
-    <!-- Поиск -->
     <div class="mb-6">
       <input
         type="text"
@@ -22,13 +18,23 @@
     </div>
 
     <div
-      v-if="paginatedItems.length === 0"
+      v-if="isLoading"
+      class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+    >
+      <div
+        v-for="n in 6"
+        :key="n"
+        class="bg-white rounded-lg shadow-md h-64 animate-pulse"
+      ></div>
+    </div>
+    <div
+      v-else-if="paginatedItems.length === 0"
       class="text-center py-10 text-gray-500"
     >
-      <p v-if="venues.length === 0">Нет мест для отображения.</p>
-      <p v-else>
-        Места по вашему запросу не найдены или нет данных на этой странице.
+      <p v-if="venues.length === 0">
+        Нет мест для отображения. Нажмите "Добавить", чтобы создать новое место.
       </p>
+      <p v-else>Места по вашему запросу не найдены.</p>
     </div>
 
     <div v-else>
@@ -38,15 +44,11 @@
           :key="venue.idvenue"
           class="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col"
         >
-          <!-- Заголовок -->
           <div class="p-4 bg-primary-50">
             <h3 class="font-semibold text-lg text-primary-700">
               {{ venue.name_venue || "Место без названия" }}
             </h3>
-            <p class="text-xs text-gray-500 mt-1">ID: {{ venue.idvenue }}</p>
           </div>
-
-          <!-- Основной контент -->
           <div class="p-4 space-y-2 flex-grow">
             <p v-if="venue.address" class="text-sm">
               <strong class="font-medium">Адрес:</strong> {{ venue.address }}
@@ -67,8 +69,6 @@
               }}
             </p>
           </div>
-
-          <!-- Футер с кнопками -->
           <div class="p-4 border-t border-gray-200 bg-gray-50">
             <div class="flex justify-end space-x-3">
               <button
@@ -89,12 +89,51 @@
           </div>
         </div>
       </div>
+      <!-- Pagination Controls -->
+      <div
+        v-if="totalPages > 1"
+        class="mt-8 flex justify-center items-center space-x-2 flex-wrap"
+      >
+        <button
+          @click="prevPage"
+          :disabled="currentPage === 1"
+          class="pagination-btn"
+        >
+          Назад
+        </button>
+        <template v-for="pageNumber in displayedPages" :key="pageNumber">
+          <button
+            v-if="pageNumber === '...'"
+            disabled
+            class="pagination-btn-disabled"
+          >
+            ...
+          </button>
+          <button
+            v-else
+            @click="goToPage(pageNumber)"
+            :class="[
+              'pagination-btn',
+              currentPage === pageNumber ? 'pagination-btn-active' : '',
+            ]"
+          >
+            {{ pageNumber }}
+          </button>
+        </template>
+        <button
+          @click="nextPage"
+          :disabled="currentPage === totalPages"
+          class="pagination-btn"
+        >
+          Вперед
+        </button>
+      </div>
     </div>
 
     <!-- Modal for Add/Edit -->
     <div
       v-if="isModalOpen"
-      class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex justify-center items-center z-50"
+      class="fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full flex justify-center items-center z-50 p-4"
     >
       <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
         <h2 class="text-2xl font-bold mb-6">
@@ -170,33 +209,17 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
+import apiService from "@/services/api.service";
+import NProgress from "nprogress";
+import usePagination from "@/composables/usePagination";
 
-const venues = ref([
-  {
-    idvenue: 1,
-    name_venue: 'Ресторан "Золотой Дракон"',
-    address: "ул. Центральная, 10",
-    contact_person: "Администратор Мария",
-    phone: "+79021112233",
-    notes: "Большой банкетный зал, хорошая кухня",
-  },
-  {
-    idvenue: 2,
-    name_venue: 'Лофт "Атмосфера"',
-    address: "пр. Ленина, 55, оф. 301",
-    contact_person: "Алексей В.",
-    phone: "+79034445566",
-    notes: "Современный дизайн, подходит для корпоративов",
-  },
-]);
-
-const searchQuery = ref("");
+const venues = ref([]);
+const isLoading = ref(true);
 const isModalOpen = ref(false);
 const currentVenue = ref({});
 const isEditMode = ref(false);
-const itemsPerPage = 9;
-const currentPage = ref(1);
+const searchQuery = ref("");
 
 const defaultVenue = {
   name_venue: "",
@@ -205,6 +228,46 @@ const defaultVenue = {
   phone: "",
   notes: "",
 };
+
+async function loadVenues() {
+  isLoading.value = true;
+  NProgress.start();
+  try {
+    const response = await apiService.getVenues();
+    if (response.success) {
+      venues.value = response.data;
+    }
+  } catch (error) {
+    console.error("Failed to load venues:", error);
+  } finally {
+    isLoading.value = false;
+    NProgress.done();
+  }
+}
+
+onMounted(loadVenues);
+
+const filteredItems = computed(() => {
+  if (!searchQuery.value) {
+    return venues.value;
+  }
+  const lowerQuery = searchQuery.value.toLowerCase();
+  return venues.value.filter(
+    (item) =>
+      (item.name_venue || "").toLowerCase().includes(lowerQuery) ||
+      (item.address || "").toLowerCase().includes(lowerQuery)
+  );
+});
+
+const {
+  paginatedItems,
+  totalPages,
+  currentPage,
+  displayedPages,
+  nextPage,
+  prevPage,
+  goToPage,
+} = usePagination(filteredItems, { itemsPerPage: 6 });
 
 function openAddModal() {
   isEditMode.value = false;
@@ -222,70 +285,51 @@ function closeModal() {
   isModalOpen.value = false;
 }
 
-function saveVenue() {
-  if (isEditMode.value) {
-    const index = venues.value.findIndex(
-      (v) => v.idvenue === currentVenue.value.idvenue
-    );
-    if (index !== -1) {
-      venues.value[index] = { ...currentVenue.value };
+async function saveVenue() {
+  NProgress.start();
+  try {
+    if (isEditMode.value) {
+      await apiService.updateVenue(
+        currentVenue.value.idvenue,
+        currentVenue.value
+      );
+    } else {
+      await apiService.createVenue(currentVenue.value);
     }
-  } else {
-    // Simulate ID generation
-    currentVenue.value.idvenue =
-      venues.value.length > 0
-        ? Math.max(...venues.value.map((v) => v.idvenue)) + 1
-        : 1;
-    venues.value.push({ ...currentVenue.value });
-  }
-  closeModal();
-}
-
-function confirmDeleteItem(venue) {
-  if (confirm(`Вы уверены, что хотите удалить место "${venue.name_venue}"?`)) {
-    deleteVenue(venue);
+    await loadVenues();
+    closeModal();
+  } catch (error) {
+    console.error("Failed to save venue:", error);
+    alert("Ошибка сохранения места проведения.");
+  } finally {
+    NProgress.done();
   }
 }
 
-function deleteVenue(venueToDelete) {
-  venues.value = venues.value.filter(
-    (v) => v.idvenue !== venueToDelete.idvenue
-  );
-}
-
-const filteredVenues = computed(() => {
-  if (!searchQuery.value) {
-    return venues.value;
+async function confirmDeleteItem(venueToDelete) {
+  if (
+    confirm(
+      `Вы уверены, что хотите удалить место "${venueToDelete.name_venue}"?`
+    )
+  ) {
+    NProgress.start();
+    try {
+      await apiService.deleteVenue(venueToDelete.idvenue);
+      await loadVenues();
+    } catch (error) {
+      console.error("Failed to delete venue:", error);
+      alert(
+        "Ошибка удаления. Возможно, это место используется в мероприятиях."
+      );
+    } finally {
+      NProgress.done();
+    }
   }
-  const lowerSearchQuery = searchQuery.value.toLowerCase();
-  return venues.value.filter((venue) => {
-    const nameMatch = (venue.name_venue || "")
-      .toLowerCase()
-      .includes(lowerSearchQuery);
-    const addressMatch = (venue.address || "")
-      .toLowerCase()
-      .includes(lowerSearchQuery);
-    return nameMatch || addressMatch;
-  });
-});
-
-const totalPages = computed(() => {
-  return Math.ceil(filteredVenues.value.length / itemsPerPage);
-});
-
-const paginatedItems = computed(() => {
-  const startIndex = (currentPage.value - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  return filteredVenues.value.slice(startIndex, endIndex);
-});
+}
 
 watch(searchQuery, () => {
   currentPage.value = 1;
 });
-
-function nextPage() {
-  // ... existing code ...
-}
 </script>
 
 <style scoped>
@@ -309,5 +353,14 @@ function nextPage() {
 }
 .btn-icon-text {
   @apply flex items-center space-x-1 transition-colors duration-200;
+}
+.pagination-btn {
+  @apply px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed mb-2 sm:mb-0;
+}
+.pagination-btn-active {
+  @apply bg-primary-600 text-white border-primary-600;
+}
+.pagination-btn-disabled {
+  @apply px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg disabled:opacity-50 mb-2 sm:mb-0;
 }
 </style>

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Договор №{{documentNumber}}</title>
+    <style>
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 14px;
+            line-height: 1.5;
+            margin: 0;
+            padding: 40px;
+        }
+
+        .header {
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 30px;
+        }
+
+        .city-date {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .section {
+            margin-bottom: 20px;
+        }
+
+        .section-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th,
+        td {
+            border: 1px solid #000;
+            padding: 8px;
+            text-align: left;
+        }
+
+        .signatures {
+            margin-top: 50px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+        }
+
+        .signature-block {
+            padding-top: 30px;
+            border-top: 1px solid #000;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        ДОГОВОР № {{documentNumber}}<br>
+        на оказание услуг по декоративно-художественному оформлению
+    </div>
+
+    <div class="city-date">
+        <span>г. Пермь</span>
+        <span>{{documentDate}}</span>
+    </div>
+
+    <div class="section">
+        <p>
+            <strong>Исполнитель</strong>, в лице <strong>{{executorName}}</strong>, действующего на основании
+            <strong>{{executorLegalBasis}}</strong>, с одной стороны, и
+            <strong>Заказчик</strong>, <strong>{{customerName}}</strong>, в лице
+            <strong>{{customerContactPerson}}</strong>, с другой стороны,
+            именуемые в дальнейшем «Стороны», заключили настоящий Договор о нижеследующем:
+        </p>
+    </div>
+
+    <div class="section">
+        <h2 class="section-title">1. ПРЕДМЕТ ДОГОВОРА</h2>
+        <p>
+            1.1. Исполнитель обязуется оказать услуги по декоративно-художественному оформлению мероприятия
+            «{{eventName}}» (далее – «Мероприятие»), которое состоится {{eventDate}} по адресу: {{eventVenue}}.
+        </p>
+        <p>
+            1.2. Заказчик обязуется принять и оплатить оказанные услуги в порядке и в сроки, установленные настоящим
+            Договором.
+        </p>
+    </div>
+
+    <div class="section">
+        <h2 class="section-title">2. СТОИМОСТЬ УСЛУГ И ПОРЯДОК РАСЧЕТОВ</h2>
+        <p>
+            2.1. Общая стоимость услуг по настоящему Договору составляет <strong>{{eventCost}} рублей</strong>.
+        </p>
+        <p>
+            2.2. Оплата производится в следующем порядке:
+        <ul>
+            <li>Предоплата в размере 50% от общей стоимости, что составляет {{prepaymentAmount}} рублей, вносится в
+                течение 3 (трех) банковских дней с момента подписания настоящего Договора.</li>
+            <li>Окончательный расчет в размере 50% от общей стоимости, что составляет {{prepaymentAmount}} рублей,
+                производится в день проведения Мероприятия.</li>
+        </ul>
+        </p>
+    </div>
+
+    <div class="section">
+        <h2 class="section-title">3. РЕКВИЗИТЫ И ПОДПИСИ СТОРОН</h2>
+        <div class="signatures">
+            <div>
+                <p><strong>ИСПОЛНИТЕЛЬ:</strong></p>
+                <p>Наименование: {{executorName}}</p>
+                <p>Адрес: {{executorAddress}}</p>
+                <p>ИНН: {{executorInn}}</p>
+                <p>Тел.: {{executorPhone}}</p>
+                <p>Банк: {{executorBankName}}</p>
+                <p>Р/с: {{executorCheckingAccount}}</p>
+                <p>К/с: {{executorCorrespondentAccount}}</p>
+                <p>БИК: {{executorBic}}</p>
+                <div class="signature-block">
+                    (подпись)
+                </div>
+            </div>
+            <div>
+                <p><strong>ЗАКАЗЧИК:</strong></p>
+                <p>ФИО: {{customerContactPerson}}</p>
+                <p>Адрес: {{customerAddress}}</p>
+                <p>Телефон: {{customerPhone}}</p>
+                <p>Паспорт: {{customerPassport}}</p>
+                <br>
+                <div class="signature-block">
+                    (подпись)
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

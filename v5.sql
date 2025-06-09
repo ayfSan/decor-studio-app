@@ -66,7 +66,7 @@ CREATE TABLE `cashflow` (
   CONSTRAINT `cashflow_account_cashflow_idaccount_cashflow_fkey` FOREIGN KEY (`account_cashflow_idaccount_cashflow`) REFERENCES `account_cashflow` (`idaccount_cashflow`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `cashflow_category_cashflow_idcategory_cashflow_fkey` FOREIGN KEY (`category_cashflow_idcategory_cashflow`) REFERENCES `category_cashflow` (`idcategory_cashflow`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `cashflow_event_idevent_fkey` FOREIGN KEY (`event_idevent`) REFERENCES `event` (`idevent`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -75,7 +75,7 @@ CREATE TABLE `cashflow` (
 
 LOCK TABLES `cashflow` WRITE;
 /*!40000 ALTER TABLE `cashflow` DISABLE KEYS */;
-INSERT INTO `cashflow` VALUES (1,'2026-08-01 10:00:00.000','Предоплата за корпоратив',1,1,2,'50% предоплата',175000.00,0.00);
+INSERT INTO `cashflow` VALUES (1,'2026-08-01 10:00:00.000','Предоплата за корпоратив',1,1,2,'50% предоплата',175000.00,0.00),(2,'2025-06-09 14:45:00.000','',1,2,5,'',555555.00,0.00);
 /*!40000 ALTER TABLE `cashflow` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -91,7 +91,7 @@ CREATE TABLE `category_cashflow` (
   `name` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   PRIMARY KEY (`idcategory_cashflow`),
   UNIQUE KEY `category_cashflow_name_key` (`name`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -116,7 +116,7 @@ CREATE TABLE `category_event` (
   `name` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   PRIMARY KEY (`idcategory_event`),
   UNIQUE KEY `category_event_name_key` (`name`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -143,7 +143,7 @@ CREATE TABLE `contact` (
   `phone` varchar(45) DEFAULT NULL,
   `notes` text,
   PRIMARY KEY (`idcontact`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -152,6 +152,7 @@ CREATE TABLE `contact` (
 
 LOCK TABLES `contact` WRITE;
 /*!40000 ALTER TABLE `contact` DISABLE KEYS */;
+INSERT INTO `contact` VALUES (1,'test1','time','+785544555',NULL);
 /*!40000 ALTER TABLE `contact` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -172,7 +173,7 @@ CREATE TABLE `customer` (
   PRIMARY KEY (`idcustomer`),
   UNIQUE KEY `customer_phone_key` (`phone`),
   UNIQUE KEY `customer_telegram_username_key` (`telegram_username`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -200,10 +201,13 @@ CREATE TABLE `document` (
   `date` datetime(3) NOT NULL,
   `type` enum('ACT','CONTRACT','OTHER') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `file_path` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `document_template_id` int DEFAULT NULL,
   PRIMARY KEY (`iddocument`),
   KEY `document_event_idevent_fkey` (`event_idevent`),
-  CONSTRAINT `document_event_idevent_fkey` FOREIGN KEY (`event_idevent`) REFERENCES `event` (`idevent`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  KEY `fk_document_template_idx` (`document_template_id`),
+  CONSTRAINT `document_event_idevent_fkey` FOREIGN KEY (`event_idevent`) REFERENCES `event` (`idevent`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `fk_document_template` FOREIGN KEY (`document_template_id`) REFERENCES `document_template` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -212,7 +216,40 @@ CREATE TABLE `document` (
 
 LOCK TABLES `document` WRITE;
 /*!40000 ALTER TABLE `document` DISABLE KEYS */;
+INSERT INTO `document` VALUES (2,1,'Договор на оказание услуг по декорированию','ДК-2025/1','2025-06-09 00:00:00.000','CONTRACT',NULL,NULL);
 /*!40000 ALTER TABLE `document` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `document_template`
+--
+
+DROP TABLE IF EXISTS `document_template`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `document_template` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `name` varchar(191) NOT NULL,
+  `type` enum('CONTRACT','ACT','OTHER') NOT NULL DEFAULT 'OTHER',
+  `prefix` varchar(20) DEFAULT NULL,
+  `content` text,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `name_UNIQUE` (`name`)
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `document_template`
+--
+
+LOCK TABLES `document_template` WRITE;
+/*!40000 ALTER TABLE `document_template` DISABLE KEYS */;
+INSERT INTO `document_template` VALUES 
+(1,'Договор на декор (профессиональный)','CONTRACT','ДК','<!DOCTYPE html>\\n<html lang=\"ru\">\\n<head>\\n    <meta charset=\"UTF-8\">\\n    <title>Договор № {{documentNumber}}</title>\\n    <style>\\n        body { font-family: ''Times New Roman'', Times, serif; font-size: 14px; line-height: 1.5; margin: 2cm; }\\n        p { margin: 0 0 1em 0; text-align: justify; }\\n        h1, h2, h3 { font-weight: bold; text-align: center; margin-bottom: 20px; }\\n        h1 { font-size: 16px; }\\n        h2 { font-size: 14px; }\\n        table { width: 100%; border-collapse: collapse; margin-top: 20px; }\\n        td { vertical-align: top; padding: 5px; }\\n        .signatures { margin-top: 50px; }\\n        .signature-block { padding-top: 20px; }\\n        .signature-line { border-bottom: 1px solid black; margin: 40px 0 10px 0; }\\n    </style>\\n</head>\\n<body>\\n    <h1>ДОГОВОР № {{documentNumber}}</h1>\\n    <h2>на оказание услуг по декоративно-художественному оформлению</h2>\\n\\n    <table style=\"border: none; margin-bottom: 20px;\">\\n        <tr>\\n            <td>г. Пермь</td>\\n            <td style=\"text-align: right;\">{{documentDate}}</td>\\n        </tr>\\n    </table>\\n\\n    <p>\\n        <strong>{{executorName}}</strong>, именуемый(ая) в дальнейшем «<strong>Исполнитель</strong>», действующий(ая) на основании {{executorLegalBasis}}, с одной стороны, и\\n        гражданин(ка) <strong>{{customerName}}</strong>, именуемый(ая) в дальнейшем «<strong>Заказчик</strong>», с другой стороны, совместно именуемые «Стороны», заключили настоящий Договор о нижеследующем:\\n    </p>\\n\\n    <h3>1. ПРЕДМЕТ ДОГОВОРА</h3>\\n    <p>1.1. Исполнитель обязуется по заданию Заказчика оказать услуги по декоративно-художественному оформлению мероприятия «{{eventName}}» (далее – «Услуги»), которое состоится {{eventDate}} по адресу: {{eventVenue}}, а Заказчик обязуется принять и оплатить эти Услуги.</p>\\n    <p>1.2. Объем, перечень и требования к Услугам согласовываются Сторонами в Приложении №1 (Техническое задание), которое является неотъемлемой частью настоящего Договора. (<i>Примечание: для простоты можно включить описание прямо в этот пункт или удалить ссылку на приложение</i>).</p>\\n\\n    <h3>2. СТОИМОСТЬ УСЛУГ И ПОРЯДОК РАСЧЕТОВ</h3>\\n    <p>2.1. Общая стоимость Услуг по настоящему Договору составляет <strong>{{eventCost}} (сумма прописью) рублей 00 копеек</strong>.</p>\\n    <p>2.2. Оплата Услуг производится в следующем порядке:</p>\\n    <p>2.2.1. Заказчик вносит предоплату в размере <strong>{{prepaymentAmount}} рублей</strong> в течение 3 (трех) банковских дней с момента подписания настоящего Договора.</p>\\n    <p>2.2.2. Окончательный расчет в размере <strong>{{prepaymentAmount}} рублей</strong> производится не позднее дня проведения мероприятия.</p>\\n    <p>2.3. Способ оплаты: (<i>выберите нужное: наличный расчет, перевод на банковскую карту, безналичный расчет по реквизитам</i>).</p>\\n\\n    <h3>3. ПРАВА И ОБЯЗАННОСТИ СТОРОН</h3>\\n    <p>3.1. <strong>Исполнитель обязуется:</strong></p>\\n    <p>3.1.1. Оказать Услуги качественно и в срок, указанный в п. 1.1. настоящего Договора.</p>\\n    <p>3.1.2. Использовать для оказания Услуг собственные материалы и оборудование.</p>\\n    <p>3.1.3. Обеспечить сохранность имущества Заказчика и площадки проведения мероприятия в процессе монтажа и демонтажа декораций.</p>\\n    <p>3.2. <strong>Заказчик обязуется:</strong></p>\\n    <p>3.2.1. Своевременно произвести оплату Услуг в соответствии с разделом 2 настоящего Договора.</p>\\n    <p>3.2.2. Обеспечить Исполнителю беспрепятственный доступ к месту проведения мероприятия для выполнения монтажных и демонтажных работ.</p>\\n    <p>3.2.3. Принять оказанные Услуги по акту приема-передачи (в случае необходимости).</p>\\n    \\n    <h3>4. ОТВЕТСТВЕННОСТЬ СТОРОН</h3>\\n    <p>4.1. За неисполнение или ненадлежащее исполнение обязательств по настоящему Договору Стороны несут ответственность в соответствии с действующим законодательством РФ.</p>\\n    <p>4.2. В случае порчи или утраты декораций и оборудования Исполнителя по вине Заказчика или гостей мероприятия, Заказчик обязуется возместить Исполнителю полную стоимость причиненного ущерба.</p>\\n    \\n    <h3>5. ФОРС-МАЖОР</h3>\\n    <p>5.1. Стороны освобождаются от ответственности за частичное или полное неисполнение обязательств по настоящему Договору, если это неисполнение явилось следствием обстоятельств непреодолимой силы (форс-мажор), возникших после заключения Договора в результате событий чрезвычайного характера, которые Стороны не могли ни предвидеть, ни предотвратить разумными мерами.</p>\\n\\n    <h3>6. ЗАКЛЮЧИТЕЛЬНЫЕ ПОЛОЖЕНИЯ</h3>\\n    <p>6.1. Настоящий Договор вступает в силу с момента его подписания обеими Сторонами и действует до полного исполнения ими своих обязательств.</p>\\n    <p>6.2. Все изменения и дополнения к настоящему Договору действительны лишь в том случае, если они совершены в письменной форме и подписаны уполномоченными представителями Сторон.</p>\\n    <p>6.3. Настоящий Договор составлен в двух экземплярах, имеющих одинаковую юридическую силу, по одному для каждой из Сторон.</p>\\n\\n    <h3>7. РЕКВИЗИТЫ И ПОДПИСИ СТОРОН</h3>\\n    <table class=\"signatures\" style=\"border: none;\">\\n        <tr>\\n            <td style=\"width: 50%;\">\\n                <strong>ИСПОЛНИТЕЛЬ:</strong>\\n                <p>{{executorName}}</p>\\n                <p>Адрес: {{executorAddress}}</p>\\n                <p>ИНН: {{executorInn}}</p>\\n                <p>Тел.: {{executorPhone}}</p>\\n                <p>Банк: {{executorBankName}}</p>\\n                <p>Р/с: {{executorCheckingAccount}}</p>\\n                <p>К/с: {{executorCorrespondentAccount}}</p>\\n                <p>БИК: {{executorBic}}</p>\\n                <div class=\"signature-block\">\\n                    <div class=\"signature-line\"></div>\\n                    (Подпись)\\n                </div>\\n            </td>\\n            <td style=\"width: 50%;\">\\n                <strong>ЗАКАЗЧИК:</strong>\\n                <p>{{customerName}}</p>\\n                <p>Адрес: {{customerAddress}}</p>\\n                <p>Телефон: {{customerPhone}}</p>\\n                <p>Паспорт: {{customerPassport}}</p>\\n                 <div class=\"signature-block\">\\n                    <div class=\"signature-line\"></div>\\n                    (Подпись)\\n                </div>\\n            </td>\\n        </tr>\\n    </table>\\n</body>\\n</html>','2025-06-09 16:01:48','2025-06-09 16:01:48'),
+(2,'Акт выполненных работ (стандартный)','ACT','АКТ','<!DOCTYPE html>\\n<html lang=\"ru\">\\n<head>\\n    <meta charset=\"UTF-8\">\\n    <title>Акт № {{documentNumber}}</title>\\n    <style>\\n        body { font-family: ''Times New Roman'', Times, serif; font-size: 14px; line-height: 1.5; margin: 2cm; }\\n        p { margin: 0 0 1em 0; text-align: justify; }\\n        h1 { font-size: 16px; font-weight: bold; text-align: center; margin-bottom: 20px; }\\n        table { width: 100%; border-collapse: collapse; margin: 20px 0; }\\n        th, td { border: 1px solid black; padding: 8px; text-align: left; }\\n        th { text-align: center; font-weight: bold; }\\n        .signatures { margin-top: 50px; }\\n        .signature-block { padding-top: 20px; }\\n        .signature-line { border-bottom: 1px solid black; margin: 40px 0 10px 0; }\\n    </style>\\n</head>\\n<body>\\n    <h1>АКТ № {{documentNumber}}</h1>\\n    <p style=\"text-align: center;\">приемки-сдачи оказанных услуг по Договору № {{documentNumber}} от {{documentDate}}</p>\\n\\n    <table style=\"border: none; margin-bottom: 20px;\">\\n        <tr>\\n            <td>г. Пермь</td>\\n            <td style=\"text-align: right;\">{{documentDate}}</td>\\n        </tr>\\n    </table>\\n\\n    <p>\\n        <strong>{{executorName}}</strong>, именуемый(ая) в дальнейшем «<strong>Исполнитель</strong>», и\\n        <strong>{{customerName}}</strong>, именуемый(ая) в дальнейшем «<strong>Заказчик</strong>», составили настоящий Акт о нижеследующем:\\n    </p>\\n\\n    <p>1. В соответствии с Договором № {{documentNumber}} от {{documentDate}} Исполнитель выполнил, а Заказчик принял следующие услуги по декоративно-художественному оформлению мероприятия «{{eventName}}»:</p>\\n\\n    <table class=\"services\">\\n        <thead>\\n            <tr>\\n                <th>Наименование услуги</th>\\n                <th>Кол-во</th>\\n                <th>Цена, руб.</th>\\n                <th>Сумма, руб.</th>\\n            </tr>\\n        </thead>\\n        <tbody>\\n            <tr>\\n                <td>Услуги по декоративно-художественному оформлению</td>\\n                <td>1</td>\\n                <td>{{eventCost}}</td>\\n                <td>{{eventCost}}</td>\\n            </tr>\\n        </tbody>\\n    </table>\\n\\n    <p>2. Общая стоимость оказанных услуг составляет <strong>{{eventCost}} (сумма прописью) рублей 00 копеек</strong>.</p>\\n    <p>3. Услуги оказаны в полном объеме, в установленные сроки и с надлежащим качеством. Стороны друг к другу претензий не имеют.</p>\\n    \\n    <p>Настоящий Акт составлен в двух экземплярах, по одному для каждой из Сторон.</p>\\n\\n    <h2 style=\"font-size: 14px; text-align: left; margin-top: 40px;\">ПОДПИСИ СТОРОН:</h2>\\n    <table class=\"signatures\" style=\"border: none;\">\\n        <tr>\\n            <td style=\"width: 50%;\">\\n                <strong>ИСПОЛНИТЕЛЬ:</strong>\\n                <div class=\"signature-block\">\\n                    <div class=\"signature-line\"></div>\\n                    / {{executorName}} /\\n                </div>\\n            </td>\\n            <td style=\"width: 50%;\">\\n                <strong>ЗАКАЗЧИК:</strong>\\n                 <div class=\"signature-block\">\\n                    <div class=\"signature-line\"></div>\\n                    / {{customerName}} /\\n                </div>\\n            </td>\\n        </tr>\\n    </table>\\n</body>\\n</html>','2025-06-09 16:01:48','2025-06-09 16:01:48');
+/*!40000 ALTER TABLE `document_template` ENABLE KEYS */;
 UNLOCK TABLES;
 
 --
@@ -239,7 +276,7 @@ CREATE TABLE `event` (
   CONSTRAINT `event_category_event_idcategory_event_fkey` FOREIGN KEY (`category_event_idcategory_event`) REFERENCES `category_event` (`idcategory_event`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `event_customer_idcustomer_fkey` FOREIGN KEY (`customer_idcustomer`) REFERENCES `customer` (`idcustomer`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `event_venue_idvenue_fkey` FOREIGN KEY (`venue_idvenue`) REFERENCES `venue` (`idvenue`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -248,7 +285,7 @@ CREATE TABLE `event` (
 
 LOCK TABLES `event` WRITE;
 /*!40000 ALTER TABLE `event` DISABLE KEYS */;
-INSERT INTO `event` VALUES (1,'2025-06-15 14:00:00.000','Тестовая Свадьба Ивановых',1,1,1,200000.00,'Молодожены и 50 гостей'),(2,'2025-08-20 18:00:00.000','Тестовый Корпоратив ООО \"Ромашка\"',2,2,2,350000.00,'Сотрудники компании, 70 человек'),(3,'2025-06-04 23:03:00.000','Тестовое мероприятие 1243',2,2,1,500000.00,'-'),(4,'2025-06-05 09:22:00.000','еще один тест1№',1,2,1,10.00,'');
+INSERT INTO `event` VALUES (1,'2025-06-15 09:00:00.000','Тестовая Свадьба Ивановых',1,1,1,200000.00,'Молодожены и 50 гостей'),(2,'2025-08-20 13:00:00.000','Тестовый Корпоратив ООО \"Ромашка\"',2,2,2,350000.00,'Сотрудники компании, 70 человек'),(3,'2025-06-04 18:03:00.000','Тестовое мероприятие 1243',2,2,1,500000.00,'-'),(5,'2025-06-18 09:15:00.000','Тест1',2,1,1,250000.00,NULL);
 /*!40000 ALTER TABLE `event` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -275,6 +312,7 @@ CREATE TABLE `event_contact` (
 
 LOCK TABLES `event_contact` WRITE;
 /*!40000 ALTER TABLE `event_contact` DISABLE KEYS */;
+INSERT INTO `event_contact` VALUES (1,1),(2,1),(3,1);
 /*!40000 ALTER TABLE `event_contact` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -301,7 +339,39 @@ CREATE TABLE `event_user` (
 
 LOCK TABLES `event_user` WRITE;
 /*!40000 ALTER TABLE `event_user` DISABLE KEYS */;
+INSERT INTO `event_user` VALUES (5,2);
 /*!40000 ALTER TABLE `event_user` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `task`
+--
+
+DROP TABLE IF EXISTS `task`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `task` (
+  `idtask` int NOT NULL AUTO_INCREMENT,
+  `event_idevent` int NOT NULL,
+  `title` varchar(255) NOT NULL,
+  `description` text,
+  `completed` tinyint(1) NOT NULL DEFAULT '0',
+  `priority` enum('low','medium','high') NOT NULL DEFAULT 'medium',
+  `due_date` date DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`idtask`),
+  KEY `fk_task_event_idx` (`event_idevent`),
+  CONSTRAINT `fk_task_event` FOREIGN KEY (`event_idevent`) REFERENCES `event` (`idevent`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `task`
+--
+
+LOCK TABLES `task` WRITE;
+/*!40000 ALTER TABLE `task` DISABLE KEYS */;
+/*!40000 ALTER TABLE `task` ENABLE KEYS */;
 UNLOCK TABLES;
 
 --
@@ -321,7 +391,7 @@ CREATE TABLE `user` (
   `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
   UNIQUE KEY `user_telegram_id_key` (`telegram_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -330,6 +400,7 @@ CREATE TABLE `user` (
 
 LOCK TABLES `user` WRITE;
 /*!40000 ALTER TABLE `user` DISABLE KEYS */;
+INSERT INTO `user` VALUES (2,7888,'test','name','name1','adm','2025-05-05 00:00:00.000');
 /*!40000 ALTER TABLE `user` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -350,7 +421,7 @@ CREATE TABLE `venue` (
   PRIMARY KEY (`idvenue`),
   UNIQUE KEY `venue_contact_person_key` (`contact_person`),
   UNIQUE KEY `venue_phone_key` (`phone`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -380,4 +451,38 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-06-06  0:48:37
+-- Dump completed on 2025-06-09 21:02:33
+
+--
+-- Table structure for table `company_details`
+--
+
+DROP TABLE IF EXISTS `company_details`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `company_details` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `name` varchar(191) NOT NULL,
+  `legal_basis` varchar(191) NOT NULL,
+  `address` varchar(191) NOT NULL,
+  `inn` varchar(20) NOT NULL,
+  `phone` varchar(20) NOT NULL,
+  `bank_name` varchar(191) NOT NULL,
+  `checking_account` varchar(30) NOT NULL,
+  `correspondent_account` varchar(30) NOT NULL,
+  `bic` varchar(20) NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `company_details`
+--
+
+LOCK TABLES `company_details` WRITE;
+/*!40000 ALTER TABLE `company_details` DISABLE KEYS */;
+INSERT INTO `company_details` (`id`, `name`, `legal_basis`, `address`, `inn`, `phone`, `bank_name`, `checking_account`, `correspondent_account`, `bic`, `is_active`) VALUES
+(1, 'ИП Пятунина Анна Сергеевна', 'свидетельства о государственной регистрации №123456789', 'г. Пермь, ул. Главная, д. 1, кв. 10', '123456789012', '+7 (999) 123-45-67', 'АО «СуперБанк»', '40802810100000000001', '30101810500000000002', '044525003', 1);
+/*!40000 ALTER TABLE `company_details` ENABLE KEYS */;
+UNLOCK TABLES;

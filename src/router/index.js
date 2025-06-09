@@ -15,31 +15,39 @@ import Document from "../components/views/Document.vue";
 import User from "../components/views/User.vue";
 import EventDetail from "../components/views/EventDetail.vue";
 import Analytics from "../components/views/Analytics.vue";
+import DocumentTemplates from "../components/views/DocumentTemplates.vue";
+import Login from "../components/views/Login.vue";
+import authService from "../services/auth.service.js";
 
 //import Reports from '@/views/Reports.vue' //пока нет
 //import Settings from '@/views/Settings.vue' //пока нет
 
 //путь в строке поиске
 const routes = [
-  //{ path: "/", component: Home, meta: { title: "Главная" } },
+  {
+    path: "/login",
+    name: "Login",
+    component: Login,
+    meta: { title: "Вход", hideNavbar: true },
+  },
   {
     path: "/",
     name: "Home",
     component: Home,
-    meta: { title: "Главная" },
+    meta: { title: "Главная", requiresAuth: true },
   },
   {
     path: "/events",
     name: "Events",
     component: Events,
-    meta: { title: "Мероприятия" },
+    meta: { title: "Мероприятия", requiresAuth: true },
   },
   {
     path: "/event/:eventId",
     name: "EventDetail",
     component: EventDetail,
     props: true,
-    meta: { title: "Детали мероприятия" },
+    meta: { title: "Детали мероприятия", requiresAuth: true },
   },
   //{ path: '/reports', component: Reports },
   //{ path: '/settings', component: Settings }
@@ -47,74 +55,80 @@ const routes = [
     path: "/analytics",
     name: "Analytics",
     component: Analytics,
-    meta: { title: "Аналитика" },
+    meta: { title: "Аналитика", requiresAuth: true },
   },
   {
     path: "/cash",
     name: "CashAccounting",
     component: CashAccounting,
-    meta: { title: "Общий Учет средств" },
+    meta: { title: "Общий Учет средств", requiresAuth: true },
   },
   {
     path: "/members",
     name: "Members",
     component: Members,
-    meta: { title: "Участники" },
+    meta: { title: "Участники", requiresAuth: true },
   },
   {
     path: "/todo/:eventId",
     name: "TodoList",
     component: TodoList,
     props: true,
-    meta: { title: "Чек-лист" },
+    meta: { title: "Чек-лист", requiresAuth: true },
   },
   {
     path: "/finance/accounts",
     name: "AccountCashflow",
     component: AccountCashflow,
-    meta: { title: "Счета ДС" },
+    meta: { title: "Счета ДС", requiresAuth: true },
   },
   {
     path: "/finance/categories",
     name: "CategoryCashflow",
     component: CategoryCashflow,
-    meta: { title: "Категории ДС" },
+    meta: { title: "Категории ДС", requiresAuth: true },
   },
   {
     path: "/finance/operations",
     name: "Cashflow",
     component: Cashflow,
-    meta: { title: "Движение ДС" },
+    meta: { title: "Движение ДС", requiresAuth: true },
   },
   {
     path: "/directory/event-categories",
     name: "CategoryEvent",
     component: CategoryEvent,
-    meta: { title: "Категории мероприятий" },
+    meta: { title: "Категории мероприятий", requiresAuth: true },
   },
   {
     path: "/directory/customers",
     name: "Customer",
     component: Customer,
-    meta: { title: "Клиенты" },
+    meta: { title: "Клиенты", requiresAuth: true },
   },
   {
     path: "/directory/venues",
     name: "Venue",
     component: Venue,
-    meta: { title: "Места проведения" },
+    meta: { title: "Места проведения", requiresAuth: true },
   },
   {
     path: "/directory/documents",
     name: "Document",
     component: Document,
-    meta: { title: "Документы" },
+    meta: { title: "Документы", requiresAuth: true },
+  },
+  {
+    path: "/directory/document-templates",
+    name: "DocumentTemplates",
+    component: DocumentTemplates,
+    meta: { title: "Шаблоны документов", requiresAuth: true },
   },
   {
     path: "/admin/users",
     name: "UserManagement",
     component: User,
-    meta: { title: "Пользователи системы" },
+    meta: { title: "Пользователи системы", requiresAuth: true },
   },
   {
     path: "/:pathMatch(.*)*",
@@ -131,13 +145,21 @@ const router = createRouter({
 
 //перехватчик (хук) перед каждым переходом
 router.beforeEach((to, from, next) => {
+  const loggedIn = authService.isAuthenticated();
+  const requiresAuth = to.matched.some((record) => record.meta.requiresAuth);
+
   const defaultTitle = "2d_decorstudio"; //стандартное название страницы по умолчанию
   document.title = to.meta.title
     ? `${to.meta.title} | ${defaultTitle}`
     : defaultTitle; //автоподстановка названия страниц при переходе с добавлением константы
 
-  //document.title = to.meta.title || defaultTitle
-  next();
+  if (requiresAuth && !loggedIn) {
+    next("/login");
+  } else if (to.path === "/login" && loggedIn) {
+    next("/");
+  } else {
+    next();
+  }
 });
 
 export default router;

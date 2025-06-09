@@ -1,421 +1,322 @@
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
-
-const roles = [
-  "Декоратор",
-  "Координатор",
-  "Флорист",
-  "Менеджер",
-  "Фотограф",
-  "Видеограф",
-  "Помощник",
-];
-
-const showAddMemberForm = ref(false);
-
-const members = ref([
-  {
-    id: 1,
-    firstName: "Анна",
-    lastName: "Иванова",
-    role: "Декоратор",
-    phone: "+7 (999) 123-45-67",
-    email: "anna@example.com",
-  },
-  {
-    id: 2,
-    firstName: "Петр",
-    lastName: "Смирнов",
-    role: "Координатор",
-    phone: "+7 (999) 234-56-78",
-    email: "petr@example.com",
-  },
-  {
-    id: 3,
-    firstName: "Мария",
-    lastName: "Козлова",
-    role: "Флорист",
-    phone: "+7 (999) 345-67-89",
-    email: "maria@example.com",
-  },
-]);
-
-const newMember = ref({
-  firstName: "",
-  lastName: "",
-  role: roles[0],
-  phone: "",
-  email: "",
-});
-
-const isEditMemberModalOpen = ref(false);
-const currentEditMember = ref({});
+import apiService from "@/services/api.service.js";
 
 const router = useRouter();
 
-const addMember = () => {
-  members.value.push({
-    id: members.value.length + 1,
-    ...newMember.value,
-  });
+// Для хранения всех участников (и юзеров, и контактов)
+const members = ref([]);
+// Для формы добавления/редактирования (работаем только с контактами)
+const newContact = ref({ name: "", specialty: "", phone: "", notes: "" });
+const currentEditContact = ref(null);
 
-  // Сброс формы
-  newMember.value = {
-    firstName: "",
-    lastName: "",
-    role: roles[0],
-    phone: "",
-    email: "",
-  };
-  showAddMemberForm.value = false;
-};
+// Состояния UI
+const showAddContactForm = ref(false);
+const isEditModalOpen = ref(false);
+const isLoading = ref(true);
+const searchTerm = ref("");
 
-function openEditMemberModal(member) {
-  currentEditMember.value = { ...member };
-  isEditMemberModalOpen.value = true;
-}
-
-function closeEditMemberModal() {
-  isEditMemberModalOpen.value = false;
-  currentEditMember.value = {};
-}
-
-function saveEditedMember() {
-  if (!currentEditMember.value.id) return;
-  const index = members.value.findIndex(
-    (m) => m.id === currentEditMember.value.id
-  );
-  if (index !== -1) {
-    members.value[index] = { ...currentEditMember.value };
-    console.log("Member updated (mock):", members.value[index]);
-  }
-  closeEditMemberModal();
-}
-
-const deleteMember = (id) => {
-  if (confirm("Вы уверены, что хотите удалить этого участника?")) {
-    members.value = members.value.filter((member) => member.id !== id);
-  }
-};
-
-const sortKey = ref("lastName");
-const sortOrder = ref("asc");
-
-const sortedMembers = computed(() => {
-  return [...members.value].sort((a, b) => {
-    let valA = a[sortKey.value];
-    let valB = b[sortKey.value];
-
-    if (typeof valA === "string") valA = valA.toLowerCase();
-    if (typeof valB === "string") valB = valB.toLowerCase();
-
-    let comparison = 0;
-    if (valA > valB) {
-      comparison = 1;
-    } else if (valA < valB) {
-      comparison = -1;
+// Загрузка данных
+async function loadMembers() {
+  isLoading.value = true;
+  try {
+    const response = await apiService.getTeamMembers();
+    if (response.success) {
+      members.value = response.data;
+    } else {
+      console.error("Failed to load members:", response.message);
     }
-    return sortOrder.value === "asc" ? comparison : comparison * -1;
-  });
+  } catch (error) {
+    console.error("Error loading members:", error);
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+onMounted(loadMembers);
+
+// Фильтрация
+const filteredMembers = computed(() => {
+  if (!searchTerm.value) {
+    return members.value;
+  }
+  const lowerCaseSearch = searchTerm.value.toLowerCase();
+  return members.value.filter(member =>
+    (member.name?.toLowerCase().includes(lowerCaseSearch)) ||
+    (member.role?.toLowerCase().includes(lowerCaseSearch)) ||
+    (member.type?.toLowerCase().includes(lowerCaseSearch))
+  );
 });
 
-function setSortKey(key) {
-  if (sortKey.value === key) {
-    sortOrder.value = sortOrder.value === "asc" ? "desc" : "asc";
+// Логика добавления
+const addContact = async () => {
+  try {
+    const response = await apiService.createContact(newContact.value);
+    if (response.success) {
+      await loadMembers();
+      showAddContactForm.value = false;
+      newContact.value = { name: "", specialty: "", phone: "", notes: "" };
+    } else {
+      alert(`Ошибка: ${response.message}`);
+    }
+  } catch (error) {
+    console.error("Error creating contact:", error);
+    alert("Произошла критическая ошибка при создании контакта.");
+  }
+};
+
+// Логика редактирования
+function handleEdit(member) {
+  if (member.type === 'Сотрудник') {
+    router.push({ name: 'UserManagement' });
   } else {
-    sortKey.value = key;
-    sortOrder.value = "asc";
+    currentEditContact.value = { ...member }; 
+    isEditModalOpen.value = true;
   }
 }
+
+function closeEditModal() {
+  isEditModalOpen.value = false;
+  currentEditContact.value = null;
+}
+
+async function saveEditedContact() {
+  if (!currentEditContact.value) return;
+  try {
+    const { id, name, specialty, phone, notes } = currentEditContact.value;
+    const response = await apiService.updateContact(id, { name, specialty, phone, notes });
+    if (response.success) {
+      await loadMembers();
+      closeEditModal();
+    } else {
+       alert(`Ошибка: ${response.message}`);
+    }
+  } catch (error) {
+    console.error("Error updating contact:", error);
+    alert("Произошла критическая ошибка при обновлении контакта.");
+  }
+}
+
+// Логика удаления
+const deleteItem = async (member) => {
+  const confirmMessage = `Вы уверены, что хотите удалить "${member.name}"?`;
+  if (!confirm(confirmMessage)) return;
+
+  try {
+    let response;
+    if (member.type === 'Сотрудник') {
+      response = await apiService.deleteUser(member.id);
+    } else {
+      response = await apiService.deleteContact(member.id);
+    }
+
+    if (response.success) {
+      await loadMembers();
+    } else {
+      console.error("Failed to delete item:", response.message);
+      alert(`Не удалось удалить. ${response.message}`);
+    }
+  } catch (error) {
+    console.error("Error deleting item:", error);
+    alert("Произошла критическая ошибка при удалении.");
+  }
+};
 </script>
 
 <template>
-  <div class="max-w-7xl mx-auto p-0 md:p-4 lg:p-6">
-    <div class="flex justify-between items-center mb-6">
-      <h1 class="text-3xl font-bold text-gray-800">Участники</h1>
-      <button
-        @click="showAddMemberForm = true"
-        class="bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-colors duration-200 flex items-center"
-      >
-        <span class="material-symbols-outlined md:mr-2">person_add</span>
-        <span class="hidden md:inline">Добавить участника</span>
-      </button>
-    </div>
-
-    <!-- Панель сортировки -->
+  <div class="p-4 sm:p-6 lg:p-8">
     <div
-      class="mb-6 bg-white p-4 rounded-lg shadow-sm flex flex-wrap items-center gap-4"
+      class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6"
     >
-      <span class="text-sm font-medium text-gray-700">Сортировать по:</span>
-      <button
-        @click="setSortKey('lastName')"
-        :class="['btn-sort', { 'active-sort': sortKey === 'lastName' }]"
-      >
-        Фамилии
-        <span v-if="sortKey === 'lastName'">{{
-          sortOrder === "asc" ? "&#9650;" : "&#9660;"
-        }}</span>
-      </button>
-      <button
-        @click="setSortKey('firstName')"
-        :class="['btn-sort', { 'active-sort': sortKey === 'firstName' }]"
-      >
-        Имени
-        <span v-if="sortKey === 'firstName'">{{
-          sortOrder === "asc" ? "&#9650;" : "&#9660;"
-        }}</span>
-      </button>
-      <button
-        @click="setSortKey('role')"
-        :class="['btn-sort', { 'active-sort': sortKey === 'role' }]"
-      >
-        Роли
-        <span v-if="sortKey === 'role'">{{
-          sortOrder === "asc" ? "&#9650;" : "&#9660;"
-        }}</span>
-      </button>
+      <h1 class="text-3xl font-bold text-gray-800">Участники</h1>
+      <div class="flex items-center gap-2">
+        <input
+          type="text"
+          v-model="searchTerm"
+          placeholder="Поиск..."
+          class="input-field-sm"
+        />
+        <button
+          @click="showAddContactForm = true"
+          class="btn-primary flex-shrink-0"
+        >
+          <span class="material-symbols-outlined md:mr-2">person_add</span>
+          <span class="hidden md:inline">Добавить специалиста</span>
+        </button>
+      </div>
     </div>
 
-    <!-- Форма добавления участника -->
-    <div v-if="showAddMemberForm" class="mb-6">
-      <div class="bg-white rounded-lg shadow-xl p-6">
-        <div class="flex justify-between items-center mb-4">
-          <h2 class="text-2xl font-semibold text-gray-700">Новый участник</h2>
-          <button
-            @click="showAddMemberForm = false"
-            class="text-gray-500 hover:text-gray-700 p-1 rounded-full"
-          >
-            <span class="material-symbols-outlined">close</span>
-          </button>
-        </div>
-
-        <form @submit.prevent="addMember" class="space-y-4">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label class="label-form">Имя</label>
-              <input
-                v-model="newMember.firstName"
-                type="text"
-                class="input-field"
-                required
-              />
-            </div>
-
-            <div>
-              <label class="label-form">Фамилия</label>
-              <input
-                v-model="newMember.lastName"
-                type="text"
-                class="input-field"
-                required
-              />
-            </div>
-
-            <div>
-              <label class="label-form">Роль</label>
-              <select v-model="newMember.role" class="input-field" required>
-                <option
-                  v-for="role_item in roles"
-                  :key="role_item"
-                  :value="role_item"
-                >
-                  {{ role_item }}
-                </option>
-              </select>
-            </div>
-
-            <div>
-              <label class="label-form">Телефон</label>
-              <input
-                v-model="newMember.phone"
-                type="tel"
-                class="input-field"
-                required
-              />
-            </div>
-          </div>
-
-          <div class="col-span-full">
-            <label class="label-form">Email</label>
+    <!-- Форма добавления контакта -->
+    <div
+      v-if="showAddContactForm"
+      class="mb-6 bg-white rounded-lg shadow-xl p-6"
+    >
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-2xl font-semibold text-gray-700">Новый специалист</h2>
+        <button @click="showAddContactForm = false" class="btn-icon">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <form @submit.prevent="addContact" class="space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label class="label-form">Имя</label>
             <input
-              v-model="newMember.email"
-              type="email"
+              v-model="newContact.name"
+              type="text"
               class="input-field"
               required
             />
           </div>
-
-          <div class="flex justify-end space-x-3 pt-4">
-            <button
-              type="button"
-              @click="showAddMemberForm = false"
-              class="btn-secondary"
-            >
-              Отмена
-            </button>
-            <button type="submit" class="btn-primary">
-              Добавить участника
-            </button>
+          <div>
+            <label class="label-form">Специальность</label>
+            <input
+              v-model="newContact.specialty"
+              type="text"
+              class="input-field"
+            />
           </div>
-        </form>
-      </div>
-    </div>
-
-    <!-- Список участников -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      <div
-        v-if="sortedMembers.length === 0"
-        class="col-span-full text-center py-10 text-gray-500"
-      >
-        Нет участников для отображения.
-      </div>
-      <div
-        v-for="member_item in sortedMembers"
-        :key="member_item.id"
-        class="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col"
-      >
-        <div class="p-6 flex-grow">
-          <div class="flex items-start justify-between mb-3">
-            <div>
-              <h3 class="font-semibold text-xl text-primary-700">
-                {{ member_item.firstName }} {{ member_item.lastName }}
-              </h3>
-              <p class="text-sm text-gray-600">{{ member_item.role }}</p>
-            </div>
+          <div>
+            <label class="label-form">Телефон</label>
+            <input v-model="newContact.phone" type="tel" class="input-field" />
           </div>
-
-          <div class="space-y-2 text-sm">
-            <a
-              :href="'tel:' + member_item.phone"
-              class="flex items-center text-gray-700 hover:text-primary-600 transition-colors duration-200 group"
-            >
-              <span
-                class="material-symbols-outlined mr-3 text-gray-500 group-hover:text-primary-500"
-                >phone</span
-              >
-              <span>{{ member_item.phone }}</span>
-            </a>
-            <a
-              :href="'mailto:' + member_item.email"
-              class="flex items-center text-gray-700 hover:text-primary-600 transition-colors duration-200 group"
-            >
-              <span
-                class="material-symbols-outlined mr-3 text-gray-500 group-hover:text-primary-500"
-                >mail</span
-              >
-              <span>{{ member_item.email }}</span>
-            </a>
+          <div>
+            <label class="label-form">Заметки</label>
+            <input v-model="newContact.notes" type="text" class="input-field" />
           </div>
         </div>
-        <div class="bg-gray-50 p-3 flex justify-end space-x-2">
+        <div class="flex justify-end space-x-3 pt-4">
           <button
-            @click="openEditMemberModal(member_item)"
-            class="text-blue-600 hover:text-blue-800 p-2 rounded-md hover:bg-blue-100 transition-colors duration-200 flex items-center text-sm"
+            type="button"
+            @click="showAddContactForm = false"
+            class="btn-secondary"
+          >
+            Отмена
+          </button>
+          <button type="submit" class="btn-primary">Добавить</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Loading and Empty States -->
+    <div v-if="isLoading" class="text-center p-10 text-gray-500">
+      Загрузка...
+    </div>
+    <div
+      v-else-if="filteredMembers.length === 0"
+      class="text-center p-10 bg-white rounded-lg shadow-sm"
+    >
+      <p class="font-semibold">Участники не найдены</p>
+      <p class="text-sm text-gray-600">
+        Попробуйте изменить условия поиска или добавьте нового специалиста.
+      </p>
+    </div>
+
+    <!-- Members List (Responsive) -->
+    <div v-else class="space-y-4">
+      <div
+        v-for="member in filteredMembers"
+        :key="member.uniqueId"
+        class="bg-white rounded-lg shadow-md p-4 transition-shadow hover:shadow-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+      >
+        <div
+          class="flex-grow grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 items-center"
+        >
+          <!-- Name -->
+          <div class="col-span-2 sm:col-span-1">
+            <div class="font-bold text-lg text-primary-700">
+              {{ member.name }}
+            </div>
+            <div class="text-sm text-gray-500 md:hidden">{{ member.role }}</div>
+          </div>
+          <!-- Role/Specialty (hidden on mobile) -->
+          <div class="hidden md:block text-gray-600">{{ member.role }}</div>
+          <!-- Type (hidden on mobile) -->
+          <div class="hidden md:block">
+            <span
+              :class="[
+                'px-3 py-1 text-xs font-semibold rounded-full',
+                member.type === 'Сотрудник'
+                  ? 'bg-green-100 text-green-800'
+                  : 'bg-purple-100 text-purple-800',
+              ]"
+            >
+              {{ member.type }}
+            </span>
+          </div>
+          <!-- Phone (visible on mobile too) -->
+          <div class="text-gray-600">{{ member.phone }}</div>
+        </div>
+
+        <!-- Actions -->
+        <div
+          class="flex-shrink-0 flex items-center justify-end gap-2 pt-4 sm:pt-0 border-t sm:border-t-0"
+        >
+          <button
+            @click="handleEdit(member)"
+            class="btn-icon"
             title="Редактировать"
           >
-            <span class="material-symbols-outlined text-base md:mr-1"
-              >edit</span
-            >
-            <span class="hidden md:inline">Редакт.</span>
+            <span class="material-symbols-outlined">edit</span>
           </button>
           <button
-            @click="deleteMember(member_item.id)"
-            class="text-red-500 hover:text-red-700 p-2 rounded-md hover:bg-red-100 transition-colors duration-200 flex items-center text-sm"
+            @click="deleteItem(member)"
+            class="btn-icon-danger"
             title="Удалить"
           >
-            <span class="material-symbols-outlined text-base md:mr-1"
-              >delete</span
-            >
-            <span class="hidden md:inline">Удалить</span>
+            <span class="material-symbols-outlined">delete</span>
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Modal for Edit Member -->
+    <!-- Модальное окно редактирования -->
     <div
-      v-if="isEditMemberModalOpen"
-      class="fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full flex justify-center items-center z-50 p-4"
+      v-if="isEditModalOpen"
+      class="fixed inset-0 bg-gray-600 bg-opacity-75 flex justify-center items-center z-50 p-4"
     >
-      <div class="bg-white p-6 sm:p-8 rounded-lg shadow-xl w-full max-w-lg">
-        <div class="flex justify-between items-center mb-4">
-          <h2 class="text-2xl font-semibold text-gray-700">
-            Редактировать участника
-          </h2>
-          <button
-            @click="closeEditMemberModal"
-            class="text-gray-500 hover:text-gray-700 p-1 rounded-full"
-          >
-            <span class="material-symbols-outlined">close</span>
-          </button>
-        </div>
-        <form @submit.prevent="saveEditedMember" class="space-y-4">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label class="label-form">Имя</label>
-              <input
-                v-model="currentEditMember.firstName"
-                type="text"
-                class="input-field"
-                required
-              />
-            </div>
-            <div>
-              <label class="label-form">Фамилия</label>
-              <input
-                v-model="currentEditMember.lastName"
-                type="text"
-                class="input-field"
-                required
-              />
-            </div>
-            <div>
-              <label class="label-form">Роль</label>
-              <select
-                v-model="currentEditMember.role"
-                class="input-field"
-                required
-              >
-                <option
-                  v-for="role_item in roles"
-                  :key="role_item"
-                  :value="role_item"
-                >
-                  {{ role_item }}
-                </option>
-              </select>
-            </div>
-            <div>
-              <label class="label-form">Телефон</label>
-              <input
-                v-model="currentEditMember.phone"
-                type="tel"
-                class="input-field"
-                required
-              />
-            </div>
-          </div>
-          <div class="col-span-full">
-            <label class="label-form">Email</label>
+      <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
+        <h2 class="text-2xl font-bold mb-6">Редактировать специалиста</h2>
+        <form @submit.prevent="saveEditedContact" class="space-y-4">
+          <div>
+            <label class="label-form">Имя</label>
             <input
-              v-model="currentEditMember.email"
-              type="email"
+              v-model="currentEditContact.name"
+              type="text"
               class="input-field"
               required
             />
           </div>
+          <div>
+            <label class="label-form">Специальность</label>
+            <input
+              v-model="currentEditContact.specialty"
+              type="text"
+              class="input-field"
+            />
+          </div>
+          <div>
+            <label class="label-form">Телефон</label>
+            <input
+              v-model="currentEditContact.phone"
+              type="tel"
+              class="input-field"
+            />
+          </div>
+          <div>
+            <label class="label-form">Заметки</label>
+            <input
+              v-model="currentEditContact.notes"
+              type="text"
+              class="input-field"
+            />
+          </div>
           <div class="flex justify-end space-x-3 pt-4">
-            <button
-              type="button"
-              @click="closeEditMemberModal"
-              class="btn-secondary"
-            >
+            <button type="button" @click="closeEditModal" class="btn-secondary">
               Отмена
             </button>
-            <button type="submit" class="btn-primary">
-              Сохранить изменения
-            </button>
+            <button type="submit" class="btn-primary">Сохранить</button>
           </div>
         </form>
       </div>
@@ -424,24 +325,28 @@ function setSortKey(key) {
 </template>
 
 <style scoped>
-.input-field {
-  @apply mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-600 focus:border-primary-600 sm:text-sm;
+.btn-sort {
+  @apply px-3 py-1 text-sm text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors;
+}
+.active-sort {
+  @apply bg-primary-100 text-primary-700 font-semibold;
+}
+.th-table {
+  @apply px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider select-none;
+}
+.td-table {
+  @apply px-6 py-4 whitespace-nowrap text-sm;
 }
 .label-form {
   @apply block text-sm font-medium text-gray-700 mb-1;
 }
+.input-field {
+  @apply mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm;
+}
 .btn-primary {
-  @apply px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg shadow-sm;
+  @apply px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-lg shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500;
 }
 .btn-secondary {
-  @apply px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg shadow-sm;
+  @apply px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500;
 }
-.btn-sort {
-  @apply px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-50 rounded-md hover:bg-gray-200 border border-gray-300 transition-colors;
-}
-.active-sort {
-  @apply bg-primary-100 text-primary-700 border-primary-600 font-semibold;
-}
-/* .read-the-docs { color: #888; } */ /* Пример закомментированного стиля, который был в проблемной версии */
-/* .whitespace-pre-line { white-space: pre-line; } */ /* Пример закомментированного стиля */
 </style>

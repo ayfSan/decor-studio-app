@@ -2,10 +2,7 @@
   <div class="p-0">
     <div class="flex justify-between items-center mb-6">
       <h1 class="text-3xl font-bold text-gray-800">Счета ДС</h1>
-      <button
-        @click="openAddModal"
-        class="bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-colors duration-200 flex items-center"
-      >
+      <button @click="openAddModal" class="btn-primary flex items-center">
         <span class="material-symbols-outlined md:mr-2">add</span>
         <span class="hidden md:inline">Добавить счет</span>
       </button>
@@ -21,8 +18,15 @@
       />
     </div>
 
+    <div v-if="isLoading" class="space-y-4">
+      <div
+        v-for="n in 5"
+        :key="n"
+        class="bg-white rounded-lg shadow p-4 h-20 animate-pulse"
+      ></div>
+    </div>
     <div
-      v-if="paginatedItems.length === 0"
+      v-else-if="paginatedItems.length === 0"
       class="text-center py-10 text-gray-500"
     >
       <p v-if="accounts.length === 0">Нет счетов для отображения.</p>
@@ -68,16 +72,15 @@
       <button
         @click="prevPage"
         :disabled="currentPage === 1"
-        class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed mb-2 sm:mb-0"
+        class="pagination-btn"
       >
         Назад
       </button>
-
       <template v-for="pageNumber in displayedPages" :key="pageNumber">
         <button
           v-if="pageNumber === '...'"
           disabled
-          class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg disabled:opacity-50 mb-2 sm:mb-0"
+          class="pagination-btn-disabled"
         >
           ...
         </button>
@@ -85,31 +88,25 @@
           v-else
           @click="goToPage(pageNumber)"
           :class="[
-            'px-4 py-2 text-sm font-medium border rounded-lg mb-2 sm:mb-0',
-            currentPage === pageNumber
-              ? 'bg-primary-600 text-white border-primary-600'
-              : 'text-gray-700 bg-white border-gray-300 hover:bg-gray-100',
+            'pagination-btn',
+            currentPage === pageNumber ? 'pagination-btn-active' : '',
           ]"
         >
           {{ pageNumber }}
         </button>
       </template>
-
       <button
         @click="nextPage"
         :disabled="currentPage === totalPages"
-        class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed mb-2 sm:mb-0"
+        class="pagination-btn"
       >
         Вперед
       </button>
     </div>
 
     <!-- Modal for Add/Edit -->
-    <div
-      v-if="isModalOpen"
-      class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex justify-center items-center z-50 p-4"
-    >
-      <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+    <div v-if="isModalOpen" class="modal-overlay">
+      <div class="modal-content">
         <h2 class="text-2xl font-bold mb-6 text-gray-800">
           {{ isEditMode ? "Редактировать счет" : "Добавить счет" }}
         </h2>
@@ -139,121 +136,61 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
+import apiService from "@/services/api.service";
+import NProgress from "nprogress";
+import usePagination from "@/composables/usePagination";
 
-const accounts = ref([
-  { idaccount_cashflow: 1, name: "Наличные RUB" },
-  { idaccount_cashflow: 2, name: "Карта Сбербанк" },
-  { idaccount_cashflow: 3, name: 'Расчетный счет ООО "Ромашка"' },
-  { idaccount_cashflow: 4, name: "Касса #1" },
-  { idaccount_cashflow: 5, name: "Тинькофф Бизнес" },
-  { idaccount_cashflow: 6, name: "ЮMoney Кошелек" },
-  { idaccount_cashflow: 7, name: "ВТБ Онлайн" },
-  { idaccount_cashflow: 8, name: "Альфа-Банк Корп." },
-  { idaccount_cashflow: 9, name: "Резервный фонд" },
-  { idaccount_cashflow: 10, name: "Сейф в офисе" },
-  { idaccount_cashflow: 11, name: "Счет для командировок" },
-]);
-
-const searchQuery = ref("");
+const accounts = ref([]);
+const isLoading = ref(true);
 const isModalOpen = ref(false);
 const currentItem = ref({});
 const isEditMode = ref(false);
+const searchQuery = ref("");
 
-// Pagination state
-const currentPage = ref(1);
-const itemsPerPage = ref(9); // Display 9 items per page (3x3 grid on large screens)
+const defaultItem = { name: "" };
 
-const filteredAccounts = computed(() => {
+async function loadData() {
+  isLoading.value = true;
+  NProgress.start();
+  try {
+    const response = await apiService.getAccounts();
+    if (response.success) {
+      accounts.value = response.data;
+    }
+  } catch (error) {
+    console.error("Failed to load accounts:", error);
+  } finally {
+    isLoading.value = false;
+    NProgress.done();
+  }
+}
+
+onMounted(loadData);
+
+const filteredItems = computed(() => {
   if (!searchQuery.value) {
     return accounts.value;
   }
-  const lowerSearchQuery = searchQuery.value.toLowerCase();
-  return accounts.value.filter((account) =>
-    (account.name || "").toLowerCase().includes(lowerSearchQuery)
+  const lowerQuery = searchQuery.value.toLowerCase();
+  return accounts.value.filter((item) =>
+    (item.name || "").toLowerCase().includes(lowerQuery)
   );
 });
 
-const totalPages = computed(() => {
-  return Math.ceil(filteredAccounts.value.length / itemsPerPage.value);
-});
-
-const paginatedItems = computed(() => {
-  const startIndex = (currentPage.value - 1) * itemsPerPage.value;
-  const endIndex = startIndex + itemsPerPage.value;
-  return filteredAccounts.value.slice(startIndex, endIndex);
-});
-
-watch(searchQuery, () => {
-  currentPage.value = 1; // Сбрасываем на первую страницу при поиске
-});
-
-// Pagination methods
-function nextPage() {
-  if (currentPage.value < totalPages.value) {
-    currentPage.value++;
-  }
-}
-
-function prevPage() {
-  if (currentPage.value > 1) {
-    currentPage.value--;
-  }
-}
-
-function goToPage(pageNumber) {
-  if (pageNumber !== "...") {
-    currentPage.value = pageNumber;
-  }
-}
-
-// Computed property for displayed page numbers (with ellipses)
-const displayedPages = computed(() => {
-  const total = totalPages.value;
-  const current = currentPage.value;
-  const delta = 1; // Number of pages to show around the current page
-  const range = [];
-  const rangeWithDots = [];
-  let l;
-
-  if (total <= 1) {
-    return []; // No pagination needed for 1 or 0 pages
-  }
-
-  range.push(1);
-  for (
-    let i = Math.max(2, current - delta);
-    i <= Math.min(total - 1, current + delta);
-    i++
-  ) {
-    range.push(i);
-  }
-  if (total > 1) {
-    // Always add last page if more than 1 page
-    range.push(total);
-  }
-
-  // Deduplicate and sort, as current page might be 1 or total
-  const uniqueSortedRange = [...new Set(range)].sort((a, b) => a - b);
-
-  uniqueSortedRange.forEach((i) => {
-    if (l) {
-      if (i - l === 2) {
-        rangeWithDots.push(l + 1);
-      } else if (i - l !== 1) {
-        rangeWithDots.push("...");
-      }
-    }
-    rangeWithDots.push(i);
-    l = i;
-  });
-
-  return rangeWithDots;
-});
+const {
+  paginatedItems,
+  totalPages,
+  currentPage,
+  displayedPages,
+  nextPage,
+  prevPage,
+  goToPage,
+} = usePagination(filteredItems, { itemsPerPage: 9 });
 
 function openAddModal() {
   isEditMode.value = false;
-  currentItem.value = { name: "" };
+  currentItem.value = { ...defaultItem };
   isModalOpen.value = true;
 }
 
@@ -267,67 +204,44 @@ function closeModal() {
   isModalOpen.value = false;
 }
 
-function saveItem() {
-  if (isEditMode.value) {
-    const index = accounts.value.findIndex(
-      (i) => i.idaccount_cashflow === currentItem.value.idaccount_cashflow
-    );
-    if (index !== -1) {
-      accounts.value[index] = { ...currentItem.value };
-    }
-  } else {
-    // Simulate ID generation for new items
-    currentItem.value.idaccount_cashflow =
-      accounts.value.length > 0
-        ? Math.max(...accounts.value.map((i) => i.idaccount_cashflow)) + 1
-        : 1;
-    accounts.value.push({ ...currentItem.value });
-    // After adding, if the new item is on a new page, go to that page
-    if (accounts.value.length > totalPages.value * itemsPerPage.value) {
-      currentPage.value = totalPages.value;
-    } else if (
-      accounts.value.length > (currentPage.value - 1) * itemsPerPage.value &&
-      accounts.value.length <= currentPage.value * itemsPerPage.value &&
-      paginatedItems.value.length < itemsPerPage.value
-    ) {
-      // If it fits on current page, do nothing, it will appear
+async function saveItem() {
+  NProgress.start();
+  try {
+    if (isEditMode.value) {
+      await apiService.updateAccount(currentItem.value.idaccount_cashflow, {
+        name: currentItem.value.name,
+      });
     } else {
-      // If it makes the current page full and there are more items, it might push to a new page.
-      // Or if current page was empty, stay on it.
-      // Recalculate totalPages and adjust if current page is now out of bounds
-      const newTotalPages = Math.ceil(
-        accounts.value.length / itemsPerPage.value
-      );
-      if (currentPage.value > newTotalPages) currentPage.value = newTotalPages;
-      // If it was the first item, stay on page 1 or go to the page it's on
-      if (accounts.value.length <= itemsPerPage.value) currentPage.value = 1;
-      else if (paginatedItems.value.length === 0)
-        currentPage.value = newTotalPages;
+      await apiService.createAccount({ name: currentItem.value.name });
     }
+    await loadData();
+    closeModal();
+  } catch (error) {
+    console.error("Failed to save account:", error);
+    alert("Ошибка сохранения счета.");
+  } finally {
+    NProgress.done();
   }
-  closeModal();
 }
 
-function confirmDeleteItem(itemToDelete) {
+async function confirmDeleteItem(itemToDelete) {
   if (confirm(`Вы уверены, что хотите удалить счет "${itemToDelete.name}"?`)) {
-    deleteItem(itemToDelete);
-    // After deleting, if current page becomes empty and it's not the first page, go to previous page
-    if (paginatedItems.value.length === 0 && currentPage.value > 1) {
-      prevPage();
+    NProgress.start();
+    try {
+      await apiService.deleteAccount(itemToDelete.idaccount_cashflow);
+      await loadData();
+    } catch (error) {
+      console.error("Failed to delete account:", error);
+      alert("Ошибка удаления. Возможно, счет используется в транзакциях.");
+    } finally {
+      NProgress.done();
     }
   }
 }
 
-function deleteItem(itemToDelete) {
-  accounts.value = accounts.value.filter(
-    (i) => i.idaccount_cashflow !== itemToDelete.idaccount_cashflow
-  );
-  // After deleting, if current page is now beyond the total pages, adjust
-  const newTotalPages = Math.ceil(accounts.value.length / itemsPerPage.value);
-  if (currentPage.value > newTotalPages && newTotalPages > 0) {
-    currentPage.value = newTotalPages;
-  }
-}
+watch(searchQuery, () => {
+  currentPage.value = 1;
+});
 </script>
 
 <style scoped>
@@ -338,12 +252,27 @@ function deleteItem(itemToDelete) {
   @apply block text-sm font-medium text-gray-700 mb-1;
 }
 .btn-primary {
-  @apply bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-colors duration-200 flex items-center justify-center;
+  @apply bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-colors duration-200;
 }
 .btn-secondary {
-  @apply bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-lg shadow-md transition-colors duration-200 flex items-center justify-center;
+  @apply bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-lg shadow-md transition-colors duration-200;
 }
 .btn-icon-text {
   @apply flex items-center space-x-1 transition-colors duration-200;
+}
+.modal-overlay {
+  @apply fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full flex justify-center items-center z-50 p-4;
+}
+.modal-content {
+  @apply bg-white p-8 rounded-lg shadow-xl w-full max-w-md;
+}
+.pagination-btn {
+  @apply px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed mb-2 sm:mb-0;
+}
+.pagination-btn-active {
+  @apply bg-primary-600 text-white border-primary-600;
+}
+.pagination-btn-disabled {
+  @apply px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg disabled:opacity-50 mb-2 sm:mb-0;
 }
 </style>

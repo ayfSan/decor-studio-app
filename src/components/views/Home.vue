@@ -1,32 +1,22 @@
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import apiService from "@/services/api.service.js";
+import { formatCurrency, formatDate } from "@/utils/formatters.js";
 
 const router = useRouter();
 
-const today = new Date();
-const currentMonth = ref(today.getMonth());
-const currentYear = ref(today.getFullYear());
+// --- Reactive Data ---
+const stats = ref({
+  activeEvents: 0,
+  teamMembers: 0,
+  completedThisMonth: 0,
+});
+const upcomingEvents = ref([]);
+const isLoading = ref(true);
+const loadingError = ref(null);
 
-const monthNames = [
-  "Январь",
-  "Февраль",
-  "Март",
-  "Апрель",
-  "Май",
-  "Июнь",
-  "Июль",
-  "Август",
-  "Сентябрь",
-  "Октябрь",
-  "Ноябрь",
-  "Декабрь",
-];
-
-const weekDays = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-
-// Данные и логика для модального окна добавления транзакции
+// --- Transaction Modal State ---
 const isTransactionModalOpen = ref(false);
 const currentTransaction = ref({});
 const defaultTransaction = {
@@ -40,129 +30,146 @@ const defaultTransaction = {
   expense: 0,
 };
 
-// Мок-данные для селектов в модальном окне
-const accountsForModal = ref([
-  { idaccount_cashflow: 1, name: "Основной счет" },
-  { idaccount_cashflow: 2, name: "Резервный фонд" },
-  { idaccount_cashflow: 3, name: "Касса" },
-]);
+// --- Data for Modal Selects ---
+const accountsForModal = ref([]);
+const categoriesForModal = ref([]);
+const eventsListForModal = ref([]);
 
-const categoriesForModal = ref([
-  { idcategory_cashflow: 1, name: "Аренда помещения" },
-  { idcategory_cashflow: 2, name: "Зарплата" },
-  { idcategory_cashflow: 3, name: "Закупка материалов" },
-  { idcategory_cashflow: 4, name: "Доход от мероприятия" },
-]);
+// --- Data Loading ---
+async function loadDashboardData() {
+  isLoading.value = true;
+  loadingError.value = null;
+  try {
+    // Parallel fetching for critical data
+    const [statsRes, upcomingEventsRes] = await Promise.all([
+      apiService.getStatistics(),
+      apiService.getUpcomingEvents(),
+    ]);
 
-const eventsListForModal = ref([
-  { idevent: 1, project_name: "Свадьба Анны и Петра" },
-  { idevent: 2, project_name: 'Юбилей компании "ТехноПрорыв"' },
-  { idevent: 4, project_name: "Конференция Разработчиков" },
-]);
+    if (statsRes.success) {
+      stats.value = statsRes.data;
+    } else {
+      throw new Error(statsRes.message || "Failed to load statistics");
+    }
 
+    if (upcomingEventsRes.success) {
+      upcomingEvents.value = upcomingEventsRes.data;
+    } else {
+      throw new Error(
+        upcomingEventsRes.message || "Failed to load upcoming events"
+      );
+    }
+  } catch (error) {
+    console.error("Failed to load dashboard data:", error);
+    loadingError.value =
+      "Не удалось загрузить данные для панели управления. Пожалуйста, попробуйте еще раз.";
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+// Function to load data for the modal on-demand
+async function loadModalData() {
+  try {
+    const [accountsRes, categoriesRes, allEventsRes] = await Promise.all([
+      apiService.getCashflowAccounts(),
+      apiService.getCashflowCategories(),
+      apiService.getEvents(),
+    ]);
+    if (accountsRes.success) accountsForModal.value = accountsRes.data;
+    if (categoriesRes.success) categoriesForModal.value = categoriesRes.data;
+    if (allEventsRes.success) eventsListForModal.value = allEventsRes.data;
+  } catch (error) {
+    console.error("Failed to load modal data:", error);
+    // Optionally show an error to the user inside the modal
+  }
+}
+
+onMounted(loadDashboardData);
+
+// --- Modal Logic ---
 function openAddTransactionModal() {
-  currentTransaction.value = {
-    ...defaultTransaction,
-    date: new Date().toISOString().slice(0, 16),
-  };
+  currentTransaction.value = { ...defaultTransaction };
   isTransactionModalOpen.value = true;
+  // Load data when modal is opened
+  loadModalData();
 }
 
 function closeTransactionModal() {
   isTransactionModalOpen.value = false;
 }
 
-function saveTransaction() {
-  if (currentTransaction.value.date) {
-    const localDate = new Date(currentTransaction.value.date);
-    currentTransaction.value.date = new Date(
-      localDate.getTime() - localDate.getTimezoneOffset() * 60000
-    ).toISOString();
-  }
-  console.log("Новая транзакция (сохранено из Home.vue - mock):", {
-    ...currentTransaction.value,
-    idcashflow: Date.now(),
-  });
-  closeTransactionModal();
-}
-
-const daysInMonth = computed(() => {
-  const date = new Date(currentYear.value, currentMonth.value + 1, 0);
-  return Array.from({ length: date.getDate() }, (_, i) => i + 1);
-});
-
-const blanks = computed(() => {
-  const firstDay = new Date(currentYear.value, currentMonth.value, 1).getDay();
-  // Сдвиг: JS начинается с воскресенья, мы — с понедельника
-  return firstDay === 0 ? 6 : firstDay - 1;
-});
-
-function prevMonth() {
-  if (currentMonth.value === 0) {
-    currentMonth.value = 11;
-    currentYear.value -= 1;
-  } else {
-    currentMonth.value -= 1;
+async function saveTransaction() {
+  try {
+    const response = await apiService.createCashflowTransaction(
+      currentTransaction.value
+    );
+    if (response.success) {
+      // Maybe show a success notification
+      console.log("Transaction saved successfully:", response.data);
+      closeTransactionModal();
+      // Optional: you might want to refresh some data here
+    } else {
+      console.error("Failed to save transaction:", response.message);
+      alert(`Ошибка: ${response.message}`);
+    }
+  } catch (error) {
+    console.error("Error saving transaction:", error);
+    alert("Произошла ошибка при сохранении транзакции.");
   }
 }
 
-function nextMonth() {
-  if (currentMonth.value === 11) {
-    currentMonth.value = 0;
-    currentYear.value += 1;
-  } else {
-    currentMonth.value += 1;
-  }
-}
-
-const upcomingEvents = ref([
-  { id: 1, name: "Свадьба Анны и Петра", date: "15 мая 2024" },
-  { id: 2, name: "Юбилей компании", date: "20 мая 2024" },
-  { id: 3, name: "Выпускной вечер", date: "25 мая 2024" },
-]);
-
+// --- Navigation ---
 function navigateToNewEvent() {
   router.push("/events");
-}
-
-function navigateToNewTransaction() {
-  openAddTransactionModal(); // Открываем модальное окно
 }
 
 function navigateToNewMember() {
   router.push("/members");
 }
-
-onMounted(async () => {
-  try {
-    const data = await apiService.testApi();
-    console.log("API Test successful:", data);
-  } catch (error) {
-    console.error("API Test failed:", error);
-  }
-});
 </script>
 
 <template>
   <div class="max-w-7xl mx-auto">
     <h1 class="text-2xl font-semibold mb-6">Панель управления</h1>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div v-if="isLoading" class="text-center text-gray-500 py-10">
+      Загрузка данных...
+    </div>
+
+    <div
+      v-else-if="loadingError"
+      class="text-center text-red-500 bg-red-50 p-6 rounded-lg shadow-sm"
+    >
+      <p class="font-semibold text-lg mb-2">Ошибка при загрузке</p>
+      <p>{{ loadingError }}</p>
+      <button @click="loadDashboardData" class="mt-4 btn-primary">
+        Попробовать снова
+      </button>
+    </div>
+
+    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       <!-- Статистика -->
       <div class="bg-white rounded-lg p-6 shadow-sm">
         <h2 class="text-lg font-medium mb-4">Общая статистика</h2>
         <div class="space-y-3">
           <div class="flex justify-between items-center">
             <span class="text-gray-600">Активные мероприятия</span>
-            <span class="font-medium">3</span>
+            <span class="font-medium text-lg text-primary-600">{{
+              stats.activeEvents
+            }}</span>
           </div>
           <div class="flex justify-between items-center">
             <span class="text-gray-600">Участники команды</span>
-            <span class="font-medium">8</span>
+            <span class="font-medium text-lg text-primary-600">{{
+              stats.teamMembers
+            }}</span>
           </div>
           <div class="flex justify-between items-center">
             <span class="text-gray-600">Завершено в этом месяце</span>
-            <span class="font-medium">5</span>
+            <span class="font-medium text-lg text-primary-600">{{
+              stats.completedThisMonth
+            }}</span>
           </div>
         </div>
       </div>
@@ -170,16 +177,26 @@ onMounted(async () => {
       <!-- Ближайшие мероприятия -->
       <div class="bg-white rounded-lg p-6 shadow-sm">
         <h2 class="text-lg font-medium mb-4">Ближайшие мероприятия</h2>
-        <div class="space-y-4">
+        <div v-if="upcomingEvents.length > 0" class="space-y-4">
           <div
             v-for="event in upcomingEvents"
-            :key="event.id"
+            :key="event.idevent"
             class="border-b pb-3 last:border-b-0"
           >
-            <div class="font-medium">{{ event.name }}</div>
-            <div class="text-sm text-gray-600 mt-1">{{ event.date }}</div>
+            <router-link
+              :to="{ name: 'EventDetail', params: { eventId: event.idevent } }"
+              class="font-medium hover:text-primary-600 hover:underline"
+            >
+              {{ event.project_name || "Мероприятие без названия" }}
+            </router-link>
+            <div class="text-sm text-gray-600 mt-1">
+              {{ formatDate(event.date) }}
+            </div>
           </div>
         </div>
+        <p v-else class="text-sm text-gray-500 mt-4">
+          Нет предстоящих мероприятий.
+        </p>
       </div>
 
       <!-- Быстрые действия -->
@@ -194,7 +211,7 @@ onMounted(async () => {
             Новое мероприятие
           </button>
           <button
-            @click="navigateToNewTransaction"
+            @click="openAddTransactionModal"
             class="w-full py-2 px-4 bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100 transition-colors duration-200 text-left flex items-center"
           >
             <span class="material-symbols-outlined mr-2">payments</span>

@@ -2,10 +2,7 @@
   <div class="p-0">
     <div class="flex justify-between items-center mb-6">
       <h1 class="text-3xl font-bold text-gray-800">Документы</h1>
-      <button
-        @click="openAddModal"
-        class="bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-colors duration-200 flex items-center"
-      >
+      <button @click="openAddModal" class="btn-primary flex items-center">
         <span class="material-symbols-outlined md:mr-2">add</span>
         <span class="hidden md:inline">Добавить документ</span>
       </button>
@@ -14,15 +11,12 @@
     <!-- Фильтры -->
     <div class="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
       <div>
-        <label
-          for="eventFilter"
-          class="block text-sm font-medium text-gray-700 mb-1"
+        <label for="eventFilter" class="label-form"
           >Фильтр по мероприятию:</label
         >
         <select
           id="eventFilter"
           v-model="selectedEventId"
-          @change="resetExpandedAndApplyFilter"
           class="input-field w-full"
         >
           <option :value="null">Все мероприятия</option>
@@ -36,106 +30,75 @@
         </select>
       </div>
       <div>
-        <label
-          for="docSearch"
-          class="block text-sm font-medium text-gray-700 mb-1"
+        <label for="docSearch" class="label-form"
           >Поиск по названию/номеру:</label
         >
         <input
           type="text"
           id="docSearch"
           v-model="searchQuery"
-          @input="resetExpandedAndApplyFilter"
           placeholder="Введите название или номер..."
           class="input-field w-full"
         />
       </div>
     </div>
 
-    <div
-      v-if="
-        !Object.keys(finalGroupedDocuments).length &&
-        documents.length > 0 &&
-        selectedEventId
-      "
-      class="text-center py-10 text-gray-500"
-    >
-      <p>Нет документов для выбранного мероприятия.</p>
+    <div v-if="isLoading" class="text-center py-10">
+      <div
+        class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"
+      ></div>
+      <p class="mt-4 text-gray-600">Загрузка документов...</p>
     </div>
     <div
-      v-else-if="
-        !Object.keys(finalGroupedDocuments).length &&
-        documents.length > 0 &&
-        !selectedEventId &&
-        !initialDataLoaded
-      "
-      class="text-center py-10 text-gray-500"
+      v-else-if="!documents.length"
+      class="text-center py-10 text-gray-500 bg-white rounded-lg shadow-sm"
     >
-      <!-- Показываем только если это не первоначальная загрузка без фильтра -->
-      <p>
-        Нет активных групп документов для отображения по умолчанию. Выберите
-        фильтр или измените логику expanded.
-      </p>
-    </div>
-    <div v-else-if="!documents.length" class="text-center py-10 text-gray-500">
-      <p>Нет документов для отображения.</p>
+      <p>Документы еще не добавлены.</p>
     </div>
     <div
-      v-else-if="
-        Object.keys(finalGroupedDocuments).length === 0 &&
-        initialDataLoaded &&
-        !selectedEventId
-      "
-      class="text-center py-10 text-gray-500"
+      v-else-if="Object.keys(groupedDocuments).length === 0"
+      class="text-center py-10 text-gray-500 bg-white rounded-lg shadow-sm"
     >
-      <p>
-        Нет документов, соответствующих критериям для автоматического
-        отображения (текущий месяц/год). Попробуйте изменить фильтр.
-      </p>
+      <p>Документы, соответствующие вашим фильтрам, не найдены.</p>
     </div>
 
     <div v-else>
       <div
-        v-for="(yearGroup, year) in finalGroupedDocuments"
+        v-for="(yearGroup, year) in groupedDocuments"
         :key="year"
         class="mb-8"
       >
-        <h2
-          @click="toggleGroup('year-' + year)"
-          class="text-2xl font-semibold text-gray-700 mb-4 sticky top-0 bg-white py-2 z-10 border-b cursor-pointer flex justify-between items-center select-none"
-        >
+        <h2 @click="toggleGroup(`year-${year}`)" class="year-header">
           {{ year }} год
           <span
-            class="material-symbols-outlined text-gray-500 transform transition-transform duration-200"
-            :class="{ 'rotate-180': isGroupExpanded('year-' + year) }"
+            class="material-symbols-outlined icon-toggle"
+            :class="{ 'rotate-180': expandedGroups.has(`year-${year}`) }"
+            >expand_more</span
           >
-            expand_more
-          </span>
         </h2>
-        <div v-if="isGroupExpanded('year-' + year)">
+        <div v-if="expandedGroups.has(`year-${year}`)">
           <div
             v-for="(monthGroup, monthName) in yearGroup"
             :key="monthName"
             class="mb-6 ml-4 md:ml-6"
           >
             <h3
-              @click="toggleGroup('month-' + year + '-' + monthName)"
-              class="text-xl font-medium text-gray-600 mb-3 cursor-pointer flex justify-between items-center select-none"
+              @click="toggleGroup(`month-${year}-${monthName}`)"
+              class="month-header"
             >
               {{ monthName }}
               <span
-                class="material-symbols-outlined text-gray-500 transform transition-transform duration-200"
+                class="material-symbols-outlined icon-toggle"
                 :class="{
-                  'rotate-180': isGroupExpanded(
-                    'month-' + year + '-' + monthName
+                  'rotate-180': expandedGroups.has(
+                    `month-${year}-${monthName}`
                   ),
                 }"
+                >expand_more</span
               >
-                expand_more
-              </span>
             </h3>
             <div
-              v-if="isGroupExpanded('month-' + year + '-' + monthName)"
+              v-if="expandedGroups.has(`month-${year}-${monthName}`)"
               class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
             >
               <div
@@ -143,7 +106,6 @@
                 :key="doc.iddocument"
                 class="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col"
               >
-                <!-- Заголовок -->
                 <div class="p-4 bg-primary-50">
                   <h3
                     class="font-semibold text-lg text-primary-700 truncate"
@@ -157,45 +119,35 @@
                   >
                     № {{ doc.document_number }}
                   </p>
-                  <p class="text-xs text-gray-500 mt-1">
-                    ID: {{ doc.iddocument }}
-                  </p>
                 </div>
-
-                <!-- Основной контент -->
                 <div class="p-4 space-y-2 flex-grow">
                   <p class="text-sm">
                     <strong class="font-medium">Событие:</strong>
-                    {{ getEventNameById(doc.event_idevent) }}
+                    {{ doc.project_name }}
                   </p>
                   <p class="text-sm">
-                    <strong class="font-medium">Тип:</strong> {{ doc.type }}
+                    <strong class="font-medium">Тип:</strong>
+                    {{ getDocumentTypeLabel(doc.type) }}
                   </p>
                   <p class="text-sm">
                     <strong class="font-medium">Дата:</strong>
                     {{ formatDate(doc.date) }}
                   </p>
                 </div>
-
-                <!-- Футер с кнопками и ссылкой -->
                 <div
-                  class="p-4 border-t border-gray-200 bg-gray-50 flex justify-between items-center"
+                  class="p-4 border-t border-gray-200 bg-gray-50 flex justify-end items-center"
                 >
-                  <div>
-                    <a
-                      v-if="doc.file_path && doc.file_path !== '#'"
-                      :href="doc.file_path"
-                      target="_blank"
-                      class="btn-icon-text text-blue-600 hover:text-blue-800 hover:underline"
+                  <div class="flex space-x-3">
+                    <button
+                      @click="downloadDocument(doc.iddocument)"
+                      class="btn-icon-text text-green-600 hover:text-green-800"
+                      title="Скачать PDF"
                     >
                       <span class="material-symbols-outlined text-lg"
-                        >link</span
+                        >download</span
                       >
-                      <span class="text-sm hidden sm:inline">Файл</span>
-                    </a>
-                    <span v-else class="text-sm text-gray-400">Нет файла</span>
-                  </div>
-                  <div class="flex space-x-3">
+                      <span class="text-sm hidden sm:inline">Скачать</span>
+                    </button>
                     <button
                       @click="openEditModal(doc)"
                       class="btn-icon-text text-primary-600 hover:text-primary-800"
@@ -206,7 +158,7 @@
                       <span class="text-sm hidden sm:inline">Изменить</span>
                     </button>
                     <button
-                      @click="confirmDeleteItem(doc)"
+                      @click="confirmDeleteItem(doc.iddocument)"
                       class="btn-icon-text text-red-500 hover:text-red-700"
                     >
                       <span class="material-symbols-outlined text-lg"
@@ -224,11 +176,8 @@
     </div>
 
     <!-- Modal for Add/Edit -->
-    <div
-      v-if="isModalOpen"
-      class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex justify-center items-center z-50 p-4"
-    >
-      <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
+    <div v-if="isModalOpen" class="modal-overlay">
+      <div class="modal-content">
         <h2 class="text-2xl font-bold mb-6 text-gray-800">
           {{ isEditMode ? "Редактировать документ" : "Добавить документ" }}
         </h2>
@@ -236,6 +185,25 @@
           @submit.prevent="saveDocument"
           class="grid grid-cols-1 md:grid-cols-2 gap-6"
         >
+          <div v-if="!isEditMode" class="md:col-span-2">
+            <label for="template" class="label-form"
+              >Шаблон (опционально)</label
+            >
+            <select
+              id="template"
+              v-model="selectedTemplateId"
+              class="input-field"
+            >
+              <option :value="null">Без шаблона</option>
+              <option
+                v-for="template in documentTemplates"
+                :key="template.id"
+                :value="template.id"
+              >
+                {{ template.name }}
+              </option>
+            </select>
+          </div>
           <div>
             <label for="event_idevent" class="label-form">Событие</label>
             <select
@@ -255,7 +223,7 @@
             </select>
           </div>
           <div>
-            <label for="name" class="label-form">Наименование</label>
+            <label for="name" class="label-form">Название документа</label>
             <input
               type="text"
               id="name"
@@ -265,14 +233,11 @@
             />
           </div>
           <div>
-            <label for="document_number" class="label-form"
-              >Номер документа</label
-            >
+            <label for="document_number" class="label-form">Номер</label>
             <input
               type="text"
               id="document_number"
               v-model="currentDocument.document_number"
-              required
               class="input-field"
             />
           </div>
@@ -287,24 +252,25 @@
             />
           </div>
           <div>
-            <label for="type" class="label-form">Тип документа</label>
+            <label for="type" class="label-form">Тип</label>
             <select
               id="type"
               v-model="currentDocument.type"
               required
               class="input-field"
             >
-              <option value="ACT">Акт</option>
               <option value="CONTRACT">Договор</option>
+              <option value="ACT">Акт</option>
               <option value="OTHER">Другое</option>
             </select>
           </div>
           <div>
-            <label for="file_path" class="label-form">Путь к файлу (URL)</label>
+            <label for="file_path" class="label-form">Ссылка на файл</label>
             <input
               type="url"
               id="file_path"
               v-model="currentDocument.file_path"
+              placeholder="https://..."
               class="input-field"
             />
           </div>
@@ -324,234 +290,128 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from "vue";
+import apiService from "@/services/api.service";
+import NProgress from "nprogress";
 
-const documents = ref([
-  {
-    iddocument: 1,
-    event_idevent: 101,
-    name: "Договор на оказание услуг",
-    document_number: "ДС-001/24",
-    date: "2024-05-15",
-    type: "CONTRACT",
-    file_path: "#",
-  },
-  {
-    iddocument: 2,
-    event_idevent: 101,
-    name: "Акт выполненных работ",
-    document_number: "АВР-001/24",
-    date: "2024-06-01",
-    type: "ACT",
-    file_path: "#",
-  },
-  {
-    iddocument: 3,
-    event_idevent: 102,
-    name: "Счет-оферта",
-    document_number: "СО-005/24",
-    date: "2024-05-20",
-    type: "OTHER",
-    file_path: null,
-  },
-  {
-    iddocument: 4,
-    event_idevent: 103,
-    name: "Договор на конференцию",
-    document_number: "ДК-002/23",
-    date: "2023-11-10",
-    type: "CONTRACT",
-    file_path: "#",
-  },
-  {
-    iddocument: 5,
-    event_idevent: 101,
-    name: "Доп. соглашение к ДС-001/24",
-    document_number: "ДС-001/24/1",
-    date: "2024-05-25",
-    type: "OTHER",
-    file_path: "#",
-  },
-  {
-    iddocument: 6,
-    event_idevent: 102,
-    name: "Акт для ТехноПрорыв",
-    document_number: "АВР-002/24",
-    date: new Date().toISOString().slice(0, 10),
-    type: "ACT",
-    file_path: "#",
-  },
-]);
-
-// Demo data for events (ideally fetched or passed as prop)
-const eventsList = ref([
-  { idevent: 101, project_name: "Свадьба Анны и Петра" },
-  { idevent: 102, project_name: 'Юбилей компании "ТехноПрорыв"' },
-  { idevent: 103, project_name: "Конференция Разработчиков" },
-]);
-
+const documents = ref([]);
+const eventsList = ref([]);
+const isLoading = ref(true);
+const searchQuery = ref("");
 const selectedEventId = ref(null);
-const searchQuery = ref(""); // Для текстового поиска
 const isModalOpen = ref(false);
 const currentDocument = ref({});
 const isEditMode = ref(false);
-const initialDataLoaded = ref(false);
+const expandedGroups = ref(new Set());
+const selectedTemplateId = ref(null);
 
-const expandedGroups = ref({});
+const defaultDocument = {
+  event_idevent: null,
+  name: "",
+  document_number: "",
+  date: new Date().toISOString().slice(0, 10),
+  type: "CONTRACT",
+  file_path: "",
+};
 
-const initializeExpandedGroups = (groupsToExpand) => {
-  const newExpandedState = {};
-  const currentDate = new Date();
-  const currentYear = currentDate.getFullYear();
-  const currentMonthName =
-    currentDate
-      .toLocaleString("ru-RU", { month: "long" })
-      .charAt(0)
-      .toUpperCase() +
-    currentDate.toLocaleString("ru-RU", { month: "long" }).slice(1);
+// This should be fetched from the backend
+const documentTemplates = ref([]);
 
-  for (const yearKey in groupsToExpand) {
-    const year = yearKey;
-    if (year === currentYear.toString()) {
-      newExpandedState["year-" + year] = true;
-      if (groupsToExpand[yearKey][currentMonthName]) {
-        newExpandedState["month-" + year + "-" + currentMonthName] = true;
-      }
-    } else {
-      newExpandedState["year-" + year] = false;
+const documentTypeLabels = {
+  CONTRACT: "Договор",
+  ACT: "Акт",
+  OTHER: "Другое",
+};
+const getDocumentTypeLabel = (type) => documentTypeLabels[type] || type;
+
+async function loadInitialData() {
+  isLoading.value = true;
+  NProgress.start();
+  try {
+    const [docsResponse, eventsResponse, templatesResponse] = await Promise.all(
+      [
+        apiService.getDocuments(),
+        apiService.getEvents(),
+        apiService.getDocumentTemplates(),
+      ]
+    );
+
+    if (docsResponse.success) {
+      documents.value = docsResponse.data;
     }
-    for (const monthKey in groupsToExpand[yearKey]) {
-      if (!(year === currentYear.toString() && monthKey === currentMonthName)) {
-        if (newExpandedState["month-" + year + "-" + monthKey] === undefined) {
-          newExpandedState["month-" + year + "-" + monthKey] = false;
-        }
-      }
+    if (eventsResponse.success) {
+      eventsList.value = eventsResponse.data;
     }
+    if (templatesResponse.success) {
+      documentTemplates.value = templatesResponse.data;
+    }
+
+    // Automatically expand the current year and month
+    if (documents.value.length > 0) {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonthName = now.toLocaleString("ru-RU", { month: "long" });
+      expandedGroups.value.add(`year-${currentYear}`);
+      expandedGroups.value.add(`month-${currentYear}-${currentMonthName}`);
+    }
+  } catch (error) {
+    console.error("Failed to load initial data:", error);
+  } finally {
+    isLoading.value = false;
+    NProgress.done();
   }
-  expandedGroups.value = newExpandedState;
-  initialDataLoaded.value = true;
-};
+}
 
-const toggleGroup = (groupId) => {
-  expandedGroups.value[groupId] = !expandedGroups.value[groupId];
-};
-
-const isGroupExpanded = (groupId) => {
-  return expandedGroups.value[groupId] === undefined
-    ? false
-    : expandedGroups.value[groupId];
-};
-
-const resetExpandedGroups = () => {
-  initialDataLoaded.value = false;
-};
-
-// Новая функция, которая сбрасывает раскрытие и позволяет computed обновиться
-const resetExpandedAndApplyFilter = () => {
-  initialDataLoaded.value = false;
-  // "Трогаем" computed свойство, чтобы оно пересчиталось с новым фильтром/поиском
-  // и затем корректно инициализировало expandedGroups
-  const _ = finalGroupedDocuments.value;
-};
+onMounted(loadInitialData);
 
 const filteredDocuments = computed(() => {
   let items = documents.value;
-  // Фильтр по мероприятию
-  if (selectedEventId.value !== null) {
+  if (selectedEventId.value) {
     items = items.filter((doc) => doc.event_idevent === selectedEventId.value);
   }
-  // Текстовый поиск
   if (searchQuery.value) {
-    const lowerSearchQuery = searchQuery.value.toLowerCase();
+    const lowerQuery = searchQuery.value.toLowerCase();
     items = items.filter(
       (doc) =>
-        (doc.name || "").toLowerCase().includes(lowerSearchQuery) ||
-        (doc.document_number || "").toLowerCase().includes(lowerSearchQuery)
+        doc.name.toLowerCase().includes(lowerQuery) ||
+        (doc.document_number &&
+          doc.document_number.toLowerCase().includes(lowerQuery))
     );
   }
   return items;
 });
 
-const hasDocumentsAfterFilter = computed(() => {
-  return filteredDocuments.value.length > 0;
-});
-
-// Переименовываем filteredAndGroupedDocuments в finalGroupedDocuments для ясности
-const finalGroupedDocuments = computed(() => {
-  const groups = {};
-  let itemsToProcess = filteredDocuments.value; // Используем уже отфильтрованные документы
-
-  if (!itemsToProcess.length) {
-    if (!initialDataLoaded.value) {
-      initializeExpandedGroups({});
-    }
-    return {};
-  }
-
-  const sortedDocuments = [...itemsToProcess].sort((a, b) => {
-    const dateA = new Date(a.date);
-    const dateB = new Date(b.date);
-    return dateB - dateA;
-  });
-
-  for (const doc of sortedDocuments) {
+const groupedDocuments = computed(() => {
+  return filteredDocuments.value.reduce((acc, doc) => {
     const date = new Date(doc.date);
-    const correctedDate = new Date(
-      date.getTime() + date.getTimezoneOffset() * 60000
-    );
-    const year = correctedDate.getFullYear();
-    const month = correctedDate.toLocaleString("ru-RU", { month: "long" });
-    const capitalizedMonth = month.charAt(0).toUpperCase() + month.slice(1);
+    const year = date.getFullYear();
+    const monthName = date.toLocaleString("ru-RU", { month: "long" });
 
-    if (!groups[year]) {
-      groups[year] = {};
-    }
-    if (!groups[year][capitalizedMonth]) {
-      groups[year][capitalizedMonth] = [];
-    }
-    groups[year][capitalizedMonth].push(doc);
+    if (!acc[year]) acc[year] = {};
+    if (!acc[year][monthName]) acc[year][monthName] = [];
+
+    acc[year][monthName].push(doc);
+    return acc;
+  }, {});
+});
+
+function toggleGroup(groupKey) {
+  if (expandedGroups.value.has(groupKey)) {
+    expandedGroups.value.delete(groupKey);
+  } else {
+    expandedGroups.value.add(groupKey);
   }
-
-  if (!initialDataLoaded.value || selectedEventId.value !== null) {
-    initializeExpandedGroups(groups);
-  }
-  return groups;
-});
-
-watch([selectedEventId, searchQuery], () => {
-  // Следим за обоими фильтрами
-  resetExpandedAndApplyFilter();
-});
-
-onMounted(() => {
-  const initialGroups = finalGroupedDocuments.value;
-});
-
-const getEventNameById = (eventId) => {
-  const event = eventsList.value.find((e) => e.idevent === eventId);
-  return event ? event.project_name : "Неизвестное событие";
-};
-
-function formatDate(dateString) {
-  if (!dateString) return "N/A";
-  const date = new Date(dateString);
-  const userTimezoneOffset = date.getTimezoneOffset() * 60000;
-  return new Date(date.getTime() + userTimezoneOffset).toLocaleDateString(
-    "ru-RU"
-  );
 }
 
 function openAddModal() {
   isEditMode.value = false;
-  currentDocument.value = {
-    ...defaultDocument,
-    date: new Date().toISOString().slice(0, 10),
-  };
+  currentDocument.value = { ...defaultDocument };
+  selectedTemplateId.value = null;
   isModalOpen.value = true;
 }
 
 function openEditModal(doc) {
   isEditMode.value = true;
-  currentDocument.value = { ...doc };
+  currentDocument.value = { ...doc, date: doc.date.slice(0, 10) };
   isModalOpen.value = true;
 }
 
@@ -559,52 +419,106 @@ function closeModal() {
   isModalOpen.value = false;
 }
 
-function saveDocument() {
-  if (isEditMode.value) {
-    const index = documents.value.findIndex(
-      (d) => d.iddocument === currentDocument.value.iddocument
-    );
-    if (index !== -1) {
-      documents.value[index] = { ...currentDocument.value };
+watch(selectedTemplateId, (newTemplateId) => {
+  const resetToDefault = () => {
+    currentDocument.value.name = defaultDocument.name;
+    currentDocument.value.type = defaultDocument.type;
+    currentDocument.value.document_number = defaultDocument.document_number;
+  };
+
+  if (isEditMode.value) return;
+
+  if (!newTemplateId) {
+    resetToDefault();
+    return;
+  }
+
+  const template = documentTemplates.value.find((t) => t.id === newTemplateId);
+  if (template) {
+    currentDocument.value.name = template.name;
+    currentDocument.value.type = template.type;
+
+    // Auto-numbering logic
+    if (template.prefix) {
+      const year = new Date().getFullYear();
+      const prefix = template.prefix;
+      const regex = new RegExp(`^${prefix}-${year}/(\\d+)$`);
+
+      const maxNum = documents.value.reduce((max, doc) => {
+        if (doc.document_number) {
+          const match = doc.document_number.match(regex);
+          if (match && match[1]) {
+            const num = parseInt(match[1], 10);
+            return Math.max(max, num);
+          }
+        }
+        return max;
+      }, 0);
+
+      currentDocument.value.document_number = `${prefix}-${year}/${maxNum + 1}`;
+    } else {
+      currentDocument.value.document_number = "";
     }
-  } else {
-    currentDocument.value.iddocument =
-      documents.value.length > 0
-        ? Math.max(...documents.value.map((d) => d.iddocument)) + 1
-        : 1;
-    documents.value.push({ ...currentDocument.value });
   }
-  initialDataLoaded.value = false;
-  closeModal();
+});
+
+async function saveDocument() {
+  NProgress.start();
+  try {
+    if (isEditMode.value) {
+      await apiService.updateDocument(
+        currentDocument.value.iddocument,
+        currentDocument.value
+      );
+    } else {
+      await apiService.createDocument(currentDocument.value);
+    }
+    await loadInitialData();
+    closeModal();
+  } catch (error) {
+    console.error("Failed to save document:", error);
+    alert("Ошибка сохранения документа.");
+  } finally {
+    NProgress.done();
+  }
 }
 
-function confirmDeleteItem(doc) {
-  if (
-    confirm(
-      `Вы уверены, что хотите удалить документ "${
-        doc.name || "Без названия"
-      }" (№${doc.document_number || "б/н"})?`
-    )
-  ) {
-    deleteDocument(doc);
+async function confirmDeleteItem(id) {
+  if (confirm("Вы уверены, что хотите удалить этот документ?")) {
+    NProgress.start();
+    try {
+      await apiService.deleteDocument(id);
+      await loadInitialData();
+    } catch (error) {
+      console.error("Failed to delete document:", error);
+      alert("Ошибка удаления документа.");
+    } finally {
+      NProgress.done();
+    }
   }
 }
 
-function deleteDocument(docToDelete) {
-  documents.value = documents.value.filter(
-    (d) => d.iddocument !== docToDelete.iddocument
-  );
-  initialDataLoaded.value = false;
+async function downloadDocument(docId) {
+  if (!docId) return;
+  NProgress.start();
+  try {
+    await apiService.downloadDocument(docId);
+  } catch (error) {
+    console.error("Failed to download document:", error);
+    alert(`Ошибка при скачивании документа: ${error.message}`);
+  } finally {
+    NProgress.done();
+  }
 }
+
+const formatDate = (dateString) => {
+  if (!dateString) return "N/A";
+  const options = { year: "numeric", month: "long", day: "numeric" };
+  return new Date(dateString).toLocaleDateString("ru-RU", options);
+};
 </script>
 
 <style scoped>
-.th-cell {
-  @apply px-6 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider;
-}
-.td-cell {
-  @apply px-6 py-4 border-b border-gray-200 text-sm;
-}
 .input-field {
   @apply mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-600 focus:border-primary-600 sm:text-sm;
 }
@@ -612,12 +526,29 @@ function deleteDocument(docToDelete) {
   @apply block text-sm font-medium text-gray-700 mb-1;
 }
 .btn-primary {
-  @apply bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-colors duration-200 flex items-center justify-center;
+  @apply bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-colors duration-200;
 }
 .btn-secondary {
-  @apply bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-lg shadow-md transition-colors duration-200 flex items-center justify-center;
+  @apply bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-lg shadow-md transition-colors duration-200;
 }
 .btn-icon-text {
   @apply flex items-center space-x-1 transition-colors duration-200;
+}
+
+.year-header {
+  @apply text-2xl font-semibold text-gray-700 mb-4 sticky top-0 bg-white py-2 z-10 border-b cursor-pointer flex justify-between items-center select-none;
+}
+.month-header {
+  @apply text-xl font-medium text-gray-600 mb-3 cursor-pointer flex justify-between items-center select-none;
+}
+.icon-toggle {
+  @apply text-gray-500 transform transition-transform duration-200;
+}
+
+.modal-overlay {
+  @apply fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full flex justify-center items-center z-50 p-4;
+}
+.modal-content {
+  @apply bg-white p-8 rounded-lg shadow-xl w-full max-w-lg;
 }
 </style>
