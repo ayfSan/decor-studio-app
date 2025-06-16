@@ -258,9 +258,10 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import apiService from "@/services/api.service";
 import { formatCurrency, formatDate } from "@/utils/formatters";
+import { useAuthStore } from "@/store/auth.store";
 import NProgress from "nprogress";
 
 // Main data stores
@@ -277,43 +278,38 @@ const currentItem = ref({});
 
 // Accordion state
 const expandedGroups = ref({});
+const authStore = useAuthStore();
 
-// --- DATA LOADING ---
-const loadInitialData = async () => {
+onMounted(() => {
+  loadInitialData();
+});
+
+async function loadInitialData() {
   isLoading.value = true;
-  NProgress.start();
   try {
     const [cashflowRes, accountsRes, categoriesRes, eventsRes] =
       await Promise.all([
         apiService.getCashflow(),
-        apiService.getAccounts(),
+        apiService.getCashflowAccounts(),
         apiService.getCashflowCategories(),
         apiService.getEvents(),
       ]);
-
-    if (cashflowRes.success) cashflowItems.value = cashflowRes.data;
-    if (accountsRes.success) accounts.value = accountsRes.data;
-    if (categoriesRes.success) categories.value = categoriesRes.data;
-    if (eventsRes.success) eventsList.value = eventsRes.data;
-
-    // Expand all groups by default after loading
-    groupedCashflowItems.value.forEach((group) => {
-      toggleGroup(group.id);
-    });
+    cashflowItems.value = cashflowRes.data.data;
+    accounts.value = accountsRes.data.data;
+    categories.value = categoriesRes.data.data;
+    eventsList.value = eventsRes.data.data;
   } catch (error) {
-    console.error("Failed to load initial data:", error);
-    // Handle error display to the user
+    console.error("Failed to load cashflow data:", error);
   } finally {
     isLoading.value = false;
-    NProgress.done();
   }
-};
-
-onMounted(loadInitialData);
+}
 
 // --- DATA COMPUTATION AND HELPERS ---
-const getAccountName = (id) =>
-  accounts.value.find((a) => a.idaccount_cashflow === id)?.name || "N/A";
+const getAccountName = (id) => {
+  const account = accounts.value.find((a) => a.idaccount_cashflow === id);
+  return account ? account.name : "N/A";
+};
 const getCategoryName = (id) =>
   categories.value.find((c) => c.idcategory_cashflow === id)?.name || "N/A";
 const getEventName = (id) =>
@@ -390,27 +386,33 @@ const closeModal = () => {
 const saveItem = async () => {
   NProgress.start();
   try {
-    const dataToSend = {
+    const dataToSave = {
       ...currentItem.value,
       income: currentItem.value.income || 0,
       expense: currentItem.value.expense || 0,
     };
 
+    let response;
     if (isEditMode.value) {
-      const response = await apiService.updateCashflow(
-        dataToSend.idcashflow,
-        dataToSend
+      response = await apiService.updateCashflow(
+        currentItem.value.idcashflow,
+        dataToSave
       );
-      if (!response.success) throw new Error(response.message);
     } else {
-      const response = await apiService.createCashflowTransaction(dataToSend);
-      if (!response.success) throw new Error(response.message);
+      response = await apiService.createCashflow(dataToSave);
     }
-    await loadInitialData();
-    closeModal();
+
+    if (response.data.success) {
+      closeModal();
+      await loadInitialData();
+    } else {
+      alert(
+        `Ошибка: ${response.data.message || "Не удалось сохранить операцию."}`
+      );
+    }
   } catch (error) {
-    console.error("Failed to save cashflow item:", error);
-    alert(`Ошибка сохранения: ${error.message}`);
+    console.error("Error saving cashflow item:", error);
+    alert("Произошла критическая ошибка при сохранении.");
   } finally {
     NProgress.done();
   }
@@ -421,11 +423,18 @@ const confirmDeleteItem = async (id) => {
     NProgress.start();
     try {
       const response = await apiService.deleteCashflow(id);
-      if (!response.success) throw new Error(response.message);
-      await loadInitialData();
+      if (response.data.success) {
+        await loadInitialData();
+      } else {
+        alert(
+          `Ошибка удаления: ${
+            response.data.message || "Не удалось удалить операцию."
+          }`
+        );
+      }
     } catch (error) {
-      console.error("Failed to delete cashflow item:", error);
-      alert(`Ошибка удаления: ${error.message}`);
+      console.error("Error deleting cashflow item:", error);
+      alert("Произошла критическая ошибка при удалении.");
     } finally {
       NProgress.done();
     }

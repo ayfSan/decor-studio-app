@@ -176,10 +176,12 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch, nextTick } from "vue";
 import apiService from "@/services/api.service.js";
+import { useAuthStore } from "@/store/auth.store";
 import { QuillEditor } from "@vueup/vue-quill";
 import "@vueup/vue-quill/dist/vue-quill.snow.css";
 
 const searchQuery = ref("");
+const authStore = useAuthStore();
 
 const filteredTemplates = computed(() => {
   if (!searchQuery.value) {
@@ -249,14 +251,11 @@ const fetchTemplates = async () => {
   loading.value = true;
   error.value = null;
   try {
-    const res = await apiService.getDocumentTemplates();
-    if (res.success) {
-      templates.value = res.data;
-    } else {
-      throw new Error(res.message);
-    }
+    const response = await apiService.getDocumentTemplates();
+    templates.value = response.data.data;
   } catch (err) {
-    error.value = err.message;
+    console.error("Failed to fetch templates:", err);
+    error.value = "Не удалось загрузить шаблоны.";
   } finally {
     loading.value = false;
   }
@@ -297,25 +296,33 @@ const closeModal = () => {
 
 const handleSubmit = async () => {
   try {
-    if (isEditing.value) {
-      await apiService.updateDocumentTemplate(form.value.id, form.value);
+    const response = isEditing.value
+      ? await apiService.updateDocumentTemplate(form.value.id, form.value)
+      : await apiService.createDocumentTemplate(form.value);
+    if (response.data.success) {
+      closeModal();
+      fetchTemplates();
     } else {
-      await apiService.createDocumentTemplate(form.value);
+      throw new Error(response.data.message || "Failed to save template");
     }
-    closeModal();
-    fetchTemplates();
   } catch (err) {
-    error.value = `Ошибка сохранения: ${err.message}`;
+    console.error(err);
+    alert(`Error saving template: ${err.message}`);
   }
 };
 
 const confirmDelete = async (id) => {
-  if (window.confirm("Вы уверены, что хотите удалить этот шаблон?")) {
+  if (confirm("Вы уверены, что хотите удалить этот шаблон?")) {
     try {
-      await apiService.deleteDocumentTemplate(id);
-      fetchTemplates();
+      const response = await apiService.deleteDocumentTemplate(id);
+      if (response.data.success) {
+        fetchTemplates();
+      } else {
+        throw new Error(response.data.message || "Failed to delete template");
+      }
     } catch (err) {
-      error.value = `Ошибка удаления: ${err.message}`;
+      console.error(err);
+      alert(`Error deleting template: ${err.message}`);
     }
   }
 };

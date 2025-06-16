@@ -298,6 +298,7 @@ const events = ref([]);
 const accounts = ref([]);
 const cashflowCategories = ref([]);
 const isLoading = ref(true);
+const loadingError = ref(null);
 
 // Filters
 const searchQuery = ref("");
@@ -331,7 +332,33 @@ async function loadData() {
   }
 }
 
-onMounted(loadData);
+onMounted(() => {
+  loadInitialData();
+});
+
+const loadInitialData = async () => {
+  isLoading.value = true;
+  loadingError.value = null;
+  try {
+    const [transactionsRes, categoriesRes, accountsRes, eventsRes] =
+      await Promise.all([
+        apiService.getCashflow(),
+        apiService.getCashflowCategories(),
+        apiService.getCashflowAccounts(),
+        apiService.getEvents(),
+      ]);
+
+    allTransactions.value = transactionsRes.data.data;
+    cashflowCategories.value = categoriesRes.data.data;
+    accounts.value = accountsRes.data.data;
+    events.value = eventsRes.data.data;
+  } catch (error) {
+    console.error("Failed to load cash accounting data:", error);
+    loadingError.value = "Не удалось загрузить данные для учета средств.";
+  } finally {
+    isLoading.value = false;
+  }
+};
 
 const filteredTransactions = computed(() => {
   return allTransactions.value.filter((t) => {

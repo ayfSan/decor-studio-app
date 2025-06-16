@@ -291,18 +291,22 @@
 <script setup>
 import { ref, computed, onMounted, watch } from "vue";
 import apiService from "@/services/api.service";
+import { useAuthStore } from "@/store/auth.store";
 import NProgress from "nprogress";
 
 const documents = ref([]);
 const eventsList = ref([]);
+const documentTemplates = ref([]);
 const isLoading = ref(true);
-const searchQuery = ref("");
-const selectedEventId = ref(null);
 const isModalOpen = ref(false);
-const currentDocument = ref({});
 const isEditMode = ref(false);
-const expandedGroups = ref(new Set());
+const currentDocument = ref({});
+const selectedEventId = ref(null);
+const searchQuery = ref("");
 const selectedTemplateId = ref(null);
+
+const expandedGroups = ref(new Set());
+const authStore = useAuthStore();
 
 const defaultDocument = {
   event_idevent: null,
@@ -313,9 +317,6 @@ const defaultDocument = {
   file_path: "",
 };
 
-// This should be fetched from the backend
-const documentTemplates = ref([]);
-
 const documentTypeLabels = {
   CONTRACT: "Договор",
   ACT: "Акт",
@@ -323,26 +324,45 @@ const documentTypeLabels = {
 };
 const getDocumentTypeLabel = (type) => documentTypeLabels[type] || type;
 
-async function loadInitialData() {
+async function loadPrerequisites() {
+  try {
+    const [eventsRes, templatesRes] = await Promise.all([
+      apiService.getEvents(),
+      apiService.getDocumentTemplates(),
+    ]);
+    if (eventsRes.data.success) {
+      eventsList.value = eventsRes.data.data;
+    }
+    if (templatesRes.data.success) {
+      documentTemplates.value = templatesRes.data.data;
+    }
+  } catch (error) {
+    console.error("Error loading prerequisites:", error);
+  }
+}
+
+watch(
+  () => authStore.isAuthenticated,
+  (isAuth) => {
+    if (isAuth) {
+      loadDocuments();
+      loadPrerequisites();
+    } else {
+      documents.value = [];
+      eventsList.value = [];
+      documentTemplates.value = [];
+    }
+  },
+  { immediate: true }
+);
+
+async function loadDocuments() {
   isLoading.value = true;
   NProgress.start();
   try {
-    const [docsResponse, eventsResponse, templatesResponse] = await Promise.all(
-      [
-        apiService.getDocuments(),
-        apiService.getEvents(),
-        apiService.getDocumentTemplates(),
-      ]
-    );
-
+    const docsResponse = await apiService.getDocuments();
     if (docsResponse.success) {
       documents.value = docsResponse.data;
-    }
-    if (eventsResponse.success) {
-      eventsList.value = eventsResponse.data;
-    }
-    if (templatesResponse.success) {
-      documentTemplates.value = templatesResponse.data;
     }
 
     // Automatically expand the current year and month
@@ -354,14 +374,12 @@ async function loadInitialData() {
       expandedGroups.value.add(`month-${currentYear}-${currentMonthName}`);
     }
   } catch (error) {
-    console.error("Failed to load initial data:", error);
+    console.error("Failed to load documents:", error);
   } finally {
     isLoading.value = false;
     NProgress.done();
   }
 }
-
-onMounted(loadInitialData);
 
 const filteredDocuments = computed(() => {
   let items = documents.value;
@@ -473,7 +491,7 @@ async function saveDocument() {
     } else {
       await apiService.createDocument(currentDocument.value);
     }
-    await loadInitialData();
+    await loadDocuments();
     closeModal();
   } catch (error) {
     console.error("Failed to save document:", error);
@@ -488,7 +506,7 @@ async function confirmDeleteItem(id) {
     NProgress.start();
     try {
       await apiService.deleteDocument(id);
-      await loadInitialData();
+      await loadDocuments();
     } catch (error) {
       console.error("Failed to delete document:", error);
       alert("Ошибка удаления документа.");
@@ -515,6 +533,28 @@ const formatDate = (dateString) => {
   if (!dateString) return "N/A";
   const options = { year: "numeric", month: "long", day: "numeric" };
   return new Date(dateString).toLocaleDateString("ru-RU", options);
+};
+
+onMounted(() => {
+  loadInitialData();
+});
+
+const loadInitialData = async () => {
+  isLoading.value = true;
+  try {
+    const [docsRes, eventsRes, templatesRes] = await Promise.all([
+      apiService.getDocuments(),
+      apiService.getEvents(),
+      apiService.getDocumentTemplates(),
+    ]);
+    documents.value = docsRes.data.data;
+    eventsList.value = eventsRes.data.data;
+    documentTemplates.value = templatesRes.data.data;
+  } catch (error) {
+    console.error("Failed to load initial data for documents page:", error);
+  } finally {
+    isLoading.value = false;
+  }
 };
 </script>
 

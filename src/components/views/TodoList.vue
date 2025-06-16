@@ -162,6 +162,13 @@
                 >{{ getPriorityLabel(task.priority) }}</span
               >
               <button
+                @click="openEditModal(task)"
+                class="text-gray-400 hover:text-primary-600"
+                title="Редактировать"
+              >
+                <span class="material-symbols-outlined">edit</span>
+              </button>
+              <button
                 @click="handleDeleteTask(task.idtask)"
                 class="text-gray-400 hover:text-red-600"
                 title="Удалить"
@@ -180,6 +187,80 @@
             <span>{{ formatDate(task.due_date) }}</span>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Modal for Edit Task -->
+    <div
+      v-if="isEditModalOpen"
+      class="fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full flex justify-center items-center z-50 p-4"
+    >
+      <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-lg font-medium">Редактировать задачу</h2>
+          <button
+            @click="closeEditModal"
+            class="text-gray-500 hover:text-gray-700"
+            title="Закрыть"
+          >
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <form
+          v-if="currentEditTask"
+          @submit.prevent="handleUpdateTask"
+          class="space-y-4"
+        >
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1"
+              >Название задачи</label
+            >
+            <input
+              v-model="currentEditTask.title"
+              type="text"
+              class="input-field"
+              required
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1"
+              >Описание</label
+            >
+            <textarea
+              v-model="currentEditTask.description"
+              rows="3"
+              class="input-field"
+            ></textarea>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1"
+                >Приоритет</label
+              >
+              <select v-model="currentEditTask.priority" class="input-field">
+                <option value="low">Низкий</option>
+                <option value="medium">Средний</option>
+                <option value="high">Высокий</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1"
+                >Срок выполнения</label
+              >
+              <input
+                v-model="currentEditTask.due_date"
+                type="date"
+                class="input-field"
+              />
+            </div>
+          </div>
+          <div class="flex justify-end space-x-3 mt-6">
+            <button type="button" @click="closeEditModal" class="btn-secondary">
+              Отмена
+            </button>
+            <button type="submit" class="btn-primary">Сохранить</button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
@@ -201,6 +282,9 @@ const isLoading = ref(true);
 
 const showAddTaskForm = ref(false);
 const currentFilter = ref("all");
+
+const isEditModalOpen = ref(false);
+const currentEditTask = ref(null);
 
 const filters = [
   { label: "Все задачи", value: "all" },
@@ -224,14 +308,14 @@ const loadData = async () => {
       apiService.getTasksForEvent(eventId),
     ]);
 
-    if (eventRes.success) {
-      eventName.value = eventRes.data.project_name;
+    if (eventRes.data.success) {
+      eventName.value = eventRes.data.data.project_name;
     } else {
       eventName.value = "Мероприятие не найдено";
     }
 
-    if (tasksRes.success) {
-      tasks.value = tasksRes.data;
+    if (tasksRes.data.success) {
+      tasks.value = tasksRes.data.data;
     }
   } catch (error) {
     console.error("Failed to load todo list data:", error);
@@ -261,8 +345,8 @@ const handleAddTask = async () => {
   try {
     const taskData = { ...newTask.value, event_idevent: eventId };
     const response = await apiService.createTask(taskData);
-    if (response.success) {
-      tasks.value.unshift(response.data); // Add to the top of the list
+    if (response.data.success) {
+      tasks.value.unshift(response.data.data); // Add to the top of the list
       showAddTaskForm.value = false;
       newTask.value = {
         title: "",
@@ -271,7 +355,7 @@ const handleAddTask = async () => {
         due_date: null,
       };
     } else {
-      throw new Error(response.message);
+      throw new Error(response.data.message);
     }
   } catch (error) {
     console.error("Failed to add task:", error);
@@ -282,19 +366,22 @@ const handleAddTask = async () => {
 };
 
 const toggleTaskCompletion = async (task) => {
-  const updatedTask = { ...task, completed: !task.completed };
   // Optimistically update UI
+  const originalCompletedStatus = task.completed;
   const taskIndex = tasks.value.findIndex((t) => t.idtask === task.idtask);
   if (taskIndex !== -1) {
     tasks.value[taskIndex].completed = !tasks.value[taskIndex].completed;
   }
 
   try {
-    await apiService.updateTask(task.idtask, updatedTask);
+    // Отправляем на сервер только измененное поле
+    await apiService.updateTask(task.idtask, {
+      completed: !originalCompletedStatus,
+    });
   } catch (error) {
     // Revert UI on failure
     if (taskIndex !== -1) {
-      tasks.value[taskIndex].completed = !tasks.value[taskIndex].completed;
+      tasks.value[taskIndex].completed = originalCompletedStatus;
     }
     console.error("Failed to update task status:", error);
     alert("Не удалось обновить статус задачи.");
@@ -306,14 +393,59 @@ const handleDeleteTask = async (taskId) => {
   NProgress.start();
   try {
     const response = await apiService.deleteTask(taskId);
-    if (response.success) {
+    if (response.data.success) {
       tasks.value = tasks.value.filter((t) => t.idtask !== taskId);
     } else {
-      throw new Error(response.message);
+      throw new Error(response.data.message);
     }
   } catch (error) {
     console.error("Failed to delete task:", error);
     alert("Не удалось удалить задачу.");
+  } finally {
+    NProgress.done();
+  }
+};
+
+const openEditModal = (task) => {
+  // Создаем копию, чтобы не изменять оригинальный объект напрямую
+  currentEditTask.value = { ...task };
+  // Форматируем дату для input[type=date], который ожидает 'YYYY-MM-DD'
+  if (currentEditTask.value.due_date) {
+    currentEditTask.value.due_date = new Date(currentEditTask.value.due_date)
+      .toISOString()
+      .split("T")[0];
+  }
+  isEditModalOpen.value = true;
+};
+
+const closeEditModal = () => {
+  isEditModalOpen.value = false;
+  currentEditTask.value = null;
+};
+
+const handleUpdateTask = async () => {
+  if (!currentEditTask.value) return;
+  NProgress.start();
+  try {
+    const response = await apiService.updateTask(
+      currentEditTask.value.idtask,
+      currentEditTask.value
+    );
+    if (response.data.success) {
+      // Обновляем задачу в локальном списке
+      const index = tasks.value.findIndex(
+        (t) => t.idtask === response.data.data.idtask
+      );
+      if (index !== -1) {
+        tasks.value[index] = response.data.data;
+      }
+      closeEditModal();
+    } else {
+      throw new Error(response.data.message);
+    }
+  } catch (error) {
+    console.error("Failed to update task:", error);
+    alert("Не удалось обновить задачу.");
   } finally {
     NProgress.done();
   }

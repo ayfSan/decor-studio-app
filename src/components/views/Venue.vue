@@ -211,6 +211,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from "vue";
 import apiService from "@/services/api.service";
+import { useAuthStore } from "@/store/auth.store";
 import NProgress from "nprogress";
 import usePagination from "@/composables/usePagination";
 
@@ -220,6 +221,7 @@ const isModalOpen = ref(false);
 const currentVenue = ref({});
 const isEditMode = ref(false);
 const searchQuery = ref("");
+const authStore = useAuthStore();
 
 const defaultVenue = {
   name_venue: "",
@@ -231,23 +233,21 @@ const defaultVenue = {
 
 async function loadVenues() {
   isLoading.value = true;
-  NProgress.start();
   try {
     const response = await apiService.getVenues();
-    if (response.success) {
-      venues.value = response.data;
-    }
+    venues.value = response.data.data;
   } catch (error) {
-    console.error("Failed to load venues:", error);
+    console.error("Error loading venues:", error);
   } finally {
     isLoading.value = false;
-    NProgress.done();
   }
 }
 
-onMounted(loadVenues);
+onMounted(() => {
+  loadVenues();
+});
 
-const filteredItems = computed(() => {
+const filteredVenues = computed(() => {
   if (!searchQuery.value) {
     return venues.value;
   }
@@ -267,7 +267,7 @@ const {
   nextPage,
   prevPage,
   goToPage,
-} = usePagination(filteredItems, { itemsPerPage: 6 });
+} = usePagination(filteredVenues, { itemsPerPage: 6 });
 
 function openAddModal() {
   isEditMode.value = false;
@@ -286,44 +286,54 @@ function closeModal() {
 }
 
 async function saveVenue() {
-  NProgress.start();
   try {
+    let response;
     if (isEditMode.value) {
-      await apiService.updateVenue(
+      response = await apiService.updateVenue(
         currentVenue.value.idvenue,
         currentVenue.value
       );
     } else {
-      await apiService.createVenue(currentVenue.value);
+      response = await apiService.createVenue(currentVenue.value);
     }
-    await loadVenues();
-    closeModal();
+
+    if (response.data.success) {
+      closeModal();
+      loadVenues();
+    } else {
+      alert(
+        `Ошибка: ${
+          response.data.message || "Не удалось сохранить место проведения."
+        }`
+      );
+    }
   } catch (error) {
-    console.error("Failed to save venue:", error);
-    alert("Ошибка сохранения места проведения.");
-  } finally {
-    NProgress.done();
+    console.error("Error saving venue:", error);
+    alert("Произошла критическая ошибка при сохранении.");
   }
 }
 
-async function confirmDeleteItem(venueToDelete) {
-  if (
-    confirm(
-      `Вы уверены, что хотите удалить место "${venueToDelete.name_venue}"?`
-    )
-  ) {
-    NProgress.start();
-    try {
-      await apiService.deleteVenue(venueToDelete.idvenue);
-      await loadVenues();
-    } catch (error) {
-      console.error("Failed to delete venue:", error);
+async function confirmDeleteItem(venue) {
+  if (confirm(`Вы уверены, что хотите удалить место "${venue.name_venue}"?`)) {
+    await deleteItem(venue.idvenue);
+  }
+}
+
+async function deleteItem(id) {
+  try {
+    const response = await apiService.deleteVenue(id);
+    if (response.data.success) {
+      loadVenues();
+    } else {
       alert(
-        "Ошибка удаления. Возможно, это место используется в мероприятиях."
+        `Ошибка удаления: ${
+          response.data.message || "Не удалось удалить место проведения."
+        }`
       );
-    } finally {
-      NProgress.done();
     }
+  } catch (error) {
+    console.error("Error deleting venue:", error);
+    alert("Произошла критическая ошибка при удалении.");
   }
 }
 

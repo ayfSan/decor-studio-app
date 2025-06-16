@@ -175,6 +175,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from "vue";
 import apiService from "@/services/api.service";
+import { useAuthStore } from "@/store/auth.store";
 import NProgress from "nprogress";
 
 const customers = ref([]);
@@ -185,6 +186,7 @@ const currentCustomer = ref({});
 const isEditMode = ref(false);
 const itemsPerPage = 9;
 const currentPage = ref(1);
+const authStore = useAuthStore();
 
 const defaultCustomer = {
   name_customer: "",
@@ -196,21 +198,19 @@ const defaultCustomer = {
 
 async function loadCustomers() {
   isLoading.value = true;
-  NProgress.start();
   try {
     const response = await apiService.getCustomers();
-    if (response.success) {
-      customers.value = response.data;
-    }
+    customers.value = response.data.data;
   } catch (error) {
-    console.error("Failed to load customers:", error);
+    console.error("Error loading customers:", error);
   } finally {
     isLoading.value = false;
-    NProgress.done();
   }
 }
 
-onMounted(loadCustomers);
+onMounted(() => {
+  loadCustomers();
+});
 
 const filteredCustomers = computed(() => {
   if (!searchQuery.value) {
@@ -256,25 +256,28 @@ function closeModal() {
 }
 
 async function saveCustomer() {
-  NProgress.start();
   try {
+    let response;
     if (isEditMode.value) {
-      const response = await apiService.updateCustomer(
+      response = await apiService.updateCustomer(
         currentCustomer.value.idcustomer,
         currentCustomer.value
       );
-      if (!response.success) throw new Error(response.message);
     } else {
-      const response = await apiService.createCustomer(currentCustomer.value);
-      if (!response.success) throw new Error(response.message);
+      response = await apiService.createCustomer(currentCustomer.value);
     }
-    await loadCustomers();
-    closeModal();
+
+    if (response.data.success) {
+      closeModal();
+      loadCustomers();
+    } else {
+      alert(
+        `Ошибка: ${response.data.message || "Не удалось сохранить клиента."}`
+      );
+    }
   } catch (error) {
-    console.error("Failed to save customer:", error);
-    alert(`Ошибка сохранения клиента: ${error.message}`);
-  } finally {
-    NProgress.done();
+    console.error("Error saving customer:", error);
+    alert("Произошла критическая ошибка при сохранении.");
   }
 }
 
@@ -287,11 +290,18 @@ async function confirmDeleteItem(id) {
     NProgress.start();
     try {
       const response = await apiService.deleteCustomer(id);
-      if (!response.success) throw new Error(response.message);
-      await loadCustomers();
+      if (response.data.success) {
+        loadCustomers();
+      } else {
+        alert(
+          `Ошибка удаления: ${
+            response.data.message || "Не удалось удалить клиента."
+          }`
+        );
+      }
     } catch (error) {
-      console.error("Failed to delete customer:", error);
-      alert(`Ошибка удаления клиента: ${error.message}`);
+      console.error("Error deleting customer:", error);
+      alert("Произошла критическая ошибка при удалении.");
     } finally {
       NProgress.done();
     }

@@ -1,9 +1,11 @@
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import apiService from "@/services/api.service.js";
+import { useAuthStore } from "@/store/auth.store";
 
 const router = useRouter();
+const authStore = useAuthStore();
 
 // Для хранения всех участников (и юзеров, и контактов)
 const members = ref([]);
@@ -21,20 +23,19 @@ const searchTerm = ref("");
 async function loadMembers() {
   isLoading.value = true;
   try {
-    const response = await apiService.getTeamMembers();
-    if (response.success) {
-      members.value = response.data;
-    } else {
-      console.error("Failed to load members:", response.message);
-    }
+    const response = await apiService.getParticipants();
+    members.value = response.data.data;
   } catch (error) {
     console.error("Error loading members:", error);
+    // Можно добавить обработку ошибки для пользователя
   } finally {
     isLoading.value = false;
   }
 }
 
-onMounted(loadMembers);
+onMounted(() => {
+  loadMembers();
+});
 
 // Фильтрация
 const filteredMembers = computed(() => {
@@ -42,10 +43,11 @@ const filteredMembers = computed(() => {
     return members.value;
   }
   const lowerCaseSearch = searchTerm.value.toLowerCase();
-  return members.value.filter(member =>
-    (member.name?.toLowerCase().includes(lowerCaseSearch)) ||
-    (member.role?.toLowerCase().includes(lowerCaseSearch)) ||
-    (member.type?.toLowerCase().includes(lowerCaseSearch))
+  return members.value.filter(
+    (member) =>
+      member.name?.toLowerCase().includes(lowerCaseSearch) ||
+      member.role?.toLowerCase().includes(lowerCaseSearch) ||
+      member.type?.toLowerCase().includes(lowerCaseSearch)
   );
 });
 
@@ -68,10 +70,10 @@ const addContact = async () => {
 
 // Логика редактирования
 function handleEdit(member) {
-  if (member.type === 'Сотрудник') {
-    router.push({ name: 'UserManagement' });
+  if (member.type === "Сотрудник") {
+    router.push({ name: "UserManagement" });
   } else {
-    currentEditContact.value = { ...member }; 
+    currentEditContact.value = { ...member };
     isEditModalOpen.value = true;
   }
 }
@@ -85,12 +87,17 @@ async function saveEditedContact() {
   if (!currentEditContact.value) return;
   try {
     const { id, name, specialty, phone, notes } = currentEditContact.value;
-    const response = await apiService.updateContact(id, { name, specialty, phone, notes });
+    const response = await apiService.updateContact(id, {
+      name,
+      specialty,
+      phone,
+      notes,
+    });
     if (response.success) {
       await loadMembers();
       closeEditModal();
     } else {
-       alert(`Ошибка: ${response.message}`);
+      alert(`Ошибка: ${response.message}`);
     }
   } catch (error) {
     console.error("Error updating contact:", error);
@@ -105,7 +112,7 @@ const deleteItem = async (member) => {
 
   try {
     let response;
-    if (member.type === 'Сотрудник') {
+    if (member.type === "Сотрудник") {
       response = await apiService.deleteUser(member.id);
     } else {
       response = await apiService.deleteContact(member.id);

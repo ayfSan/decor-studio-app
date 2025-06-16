@@ -1,4 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router";
+import { useAuthStore } from "@/store/auth.store";
+
+// Импорт компонентов страниц
 import Home from "../components/views/Home.vue";
 import Events from "../components/views/Events.vue";
 import CashAccounting from "../components/views/CashAccounting.vue";
@@ -17,31 +20,32 @@ import EventDetail from "../components/views/EventDetail.vue";
 import Analytics from "../components/views/Analytics.vue";
 import DocumentTemplates from "../components/views/DocumentTemplates.vue";
 import Login from "../components/views/Login.vue";
-import authService from "../services/auth.service.js";
+import Settings from "../components/views/Settings.vue";
 
-//import Reports from '@/views/Reports.vue' //пока нет
-//import Settings from '@/views/Settings.vue' //пока нет
-
-//путь в строке поиске
+// Определяем маршруты приложения
 const routes = [
+  // Маршрут для страницы входа
   {
     path: "/login",
     name: "Login",
     component: Login,
     meta: { title: "Вход", hideNavbar: true },
   },
+  // Главная страница
   {
     path: "/",
     name: "Home",
     component: Home,
     meta: { title: "Главная", requiresAuth: true },
   },
+  // Страница мероприятий
   {
     path: "/events",
     name: "Events",
     component: Events,
     meta: { title: "Мероприятия", requiresAuth: true },
   },
+  // Детальная страница мероприятия
   {
     path: "/event/:eventId",
     name: "EventDetail",
@@ -49,26 +53,28 @@ const routes = [
     props: true,
     meta: { title: "Детали мероприятия", requiresAuth: true },
   },
-  //{ path: '/reports', component: Reports },
-  //{ path: '/settings', component: Settings }
+  // Страница аналитики
   {
     path: "/analytics",
     name: "Analytics",
     component: Analytics,
     meta: { title: "Аналитика", requiresAuth: true },
   },
+  // Страница учета средств
   {
     path: "/cash",
     name: "CashAccounting",
     component: CashAccounting,
     meta: { title: "Общий Учет средств", requiresAuth: true },
   },
+  // Страница команды/участников
   {
     path: "/members",
     name: "Members",
     component: Members,
-    meta: { title: "Участники", requiresAuth: true },
+    meta: { title: "Команда", requiresAuth: true },
   },
+  // Чек-лист для мероприятия
   {
     path: "/todo/:eventId",
     name: "TodoList",
@@ -76,6 +82,7 @@ const routes = [
     props: true,
     meta: { title: "Чек-лист", requiresAuth: true },
   },
+  // --- Раздел "Финансы" ---
   {
     path: "/finance/accounts",
     name: "AccountCashflow",
@@ -94,6 +101,7 @@ const routes = [
     component: Cashflow,
     meta: { title: "Движение ДС", requiresAuth: true },
   },
+  // --- Раздел "Справочники" ---
   {
     path: "/directory/event-categories",
     name: "CategoryEvent",
@@ -124,12 +132,25 @@ const routes = [
     component: DocumentTemplates,
     meta: { title: "Шаблоны документов", requiresAuth: true },
   },
+  // --- Раздел "Администрирование" ---
   {
     path: "/admin/users",
     name: "UserManagement",
     component: User,
-    meta: { title: "Пользователи системы", requiresAuth: true },
+    meta: {
+      title: "Пользователи системы",
+      requiresAuth: true,
+      roles: ["admin"],
+    },
   },
+  // --- Настройки ---
+  {
+    path: "/settings",
+    name: "Settings",
+    component: Settings,
+    meta: { title: "Настройки", requiresAuth: true },
+  },
+  // --- Страница не найдена ---
   {
     path: "/:pathMatch(.*)*",
     name: "NotFound",
@@ -141,25 +162,60 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes,
+  linkActiveClass: "active",
 });
 
 //перехватчик (хук) перед каждым переходом
-router.beforeEach((to, from, next) => {
-  const loggedIn = authService.isAuthenticated();
-  const requiresAuth = to.matched.some((record) => record.meta.requiresAuth);
+router.beforeEach(async (to, from, next) => {
+  document.title = `${to.meta.title} | CRM` || "CRM";
 
-  const defaultTitle = "2d_decorstudio"; //стандартное название страницы по умолчанию
-  document.title = to.meta.title
-    ? `${to.meta.title} | ${defaultTitle}`
-    : defaultTitle; //автоподстановка названия страниц при переходе с добавлением константы
+  // Динамический импорт store, чтобы избежать проблем с порядком инициализации
+  const authStore = useAuthStore();
 
-  if (requiresAuth && !loggedIn) {
-    next("/login");
-  } else if (to.path === "/login" && loggedIn) {
-    next("/");
-  } else {
-    next();
+  // Запускаем проверку состояния аутентификации из localStorage при первой загрузке
+  if (!from.name) {
+    console.log(
+      "[ROUTER GUARD] First navigation, checking auth from localStorage."
+    );
+    await authStore.checkAuth();
   }
+
+  const isAuthenticated = authStore.isAuthenticated;
+  console.log(
+    `[ROUTER GUARD] Navigating to '${to.path}'. User is authenticated: ${isAuthenticated}`
+  );
+
+  // 1. Если маршрут требует аутентификации, а пользователь не залогинен
+  if (to.meta.requiresAuth && !isAuthenticated) {
+    console.log(
+      `[ROUTER GUARD] Access DENIED. Storing returnUrl '${to.fullPath}' and redirecting to /login.`
+    );
+    authStore.returnUrl = to.fullPath;
+    return next("/login");
+  }
+
+  // 2. Если пользователь залогинен и пытается зайти на страницу логина
+  if (to.name === "Login" && isAuthenticated) {
+    return next({ name: "Home" });
+  }
+
+  // 3. Проверка ролей доступа
+  if (to.meta.roles) {
+    const userRoles = authStore.userRoles;
+    const requiredRoles = to.meta.roles;
+
+    const hasRequiredRole = requiredRoles.some((role) =>
+      userRoles.includes(role)
+    );
+
+    if (!hasRequiredRole) {
+      // Если нет нужной роли, перенаправляем на главную
+      // В будущем можно сделать страницу "Доступ запрещен"
+      return next({ name: "Home" });
+    }
+  }
+
+  next();
 });
 
 export default router;

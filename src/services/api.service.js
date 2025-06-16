@@ -1,430 +1,220 @@
+import axios from "axios";
 import NProgress from "nprogress";
-import authService from "./auth.service.js";
 
-const API_URL = "http://localhost:3000/api";
+// Динамический импорт хранилища auth.store во избежание циклических зависимостей при запуске.
+// Это позволяет api.service и auth.store импортировать друг друга.
+const getAuthStore = async () => {
+  const { useAuthStore } = await import("@/store/auth.store");
+  return useAuthStore();
+};
 
-async function fetchFromApi(endpoint, options = {}) {
-  NProgress.start();
-  try {
-    const token = authService.getToken();
-    const headers = {
-      "Content-Type": "application/json",
-      ...options.headers,
-    };
+// Создаем экземпляр axios с базовой конфигурацией.
+const apiClient = axios.create({
+  baseURL: "http://localhost:3000/api", // Базовый URL для всех запросов
+  headers: {
+    "Content-Type": "application/json", // Тип контента по умолчанию
+  },
+});
 
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
+// --- Перехватчики (Interceptors) ---
+
+// Перехватчик запросов для отображения индикатора загрузки (NProgress).
+apiClient.interceptors.request.use((config) => {
+  NProgress.start(); // Показать индикатор
+  return config;
+});
+
+// Перехватчик ответов для обработки результатов и ошибок.
+apiClient.interceptors.response.use(
+  (response) => {
+    NProgress.done(); // Скрыть индикатор при успешном ответе
+    return response;
+  },
+  async (error) => {
+    NProgress.done(); // Скрыть индикатор при ошибке
+    // Если сервер вернул ошибку 401 (Unauthorized) или 403 (Forbidden),
+    // и это не запрос на страницу входа, то выполняем выход пользователя.
+    if (
+      error.response &&
+      (error.response.status === 401 || error.response.status === 403) &&
+      !error.config.url.includes("/auth/login")
+    ) {
+      const authStore = await getAuthStore();
+      authStore.logout(); // Вызываем action для выхода
     }
-
-    const config = {
-      method: options.method || "GET",
-      headers,
-    };
-
-    if (options.body) {
-      config.body = JSON.stringify(options.body);
-    }
-
-    const response = await fetch(`${API_URL}/${endpoint}`, config);
-
-    if (!response.ok) {
-      document.querySelector("#nprogress .bar").style.backgroundColor =
-        "#dc3545";
-      throw new Error(`HTTP error! status: ${response.status}`);
-    } else {
-      document.querySelector("#nprogress .bar").style.backgroundColor =
-        "#28a745";
-    }
-
-    return await response.json();
-  } catch (error) {
-    if (document.querySelector("#nprogress .bar")) {
-      document.querySelector("#nprogress .bar").style.backgroundColor =
-        "#dc3545";
-    }
-    console.error(`Could not fetch from endpoint: ${endpoint}`, error);
-    throw error;
-  } finally {
-    NProgress.done();
+    // Возвращаем ошибку, чтобы она могла быть обработана дальше (например, в .catch()).
+    return Promise.reject(error);
   }
-}
+);
 
-export default {
-  getApiUrl() {
-    return API_URL;
+/**
+ * Объект `apiService` предоставляет удобные методы для взаимодействия с API.
+ * Каждый метод соответствует определенному эндпоинту на сервере.
+ */
+const apiService = {
+  // --- Аутентификация ---
+  /**
+   * Отправляет учетные данные на сервер для входа.
+   * @param {object} credentials - Объект с username и password.
+   * @returns {Promise} - Промис с ответом от сервера.
+   */
+  login(credentials) {
+    return apiClient.post("/auth/login", credentials);
+  },
+  /**
+   * Устанавливает заголовок Authorization для всех последующих запросов.
+   * @param {string} token - JWT токен.
+   */
+  setAuthHeader(token) {
+    apiClient.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+  },
+  /**
+   * Удаляет заголовок Authorization из заголовков запросов.
+   */
+  removeAuthHeader() {
+    delete apiClient.defaults.headers.common["Authorization"];
   },
 
-  // --- Home Page ---
+  // --- Статистика ---
   getStatistics() {
-    return fetchFromApi("statistics");
+    return apiClient.get("/statistics");
   },
   getUpcomingEvents() {
-    return fetchFromApi("events/upcoming");
+    return apiClient.get("/events/upcoming");
   },
 
-  // --- Cashflow ---
-  getAccounts() {
-    return fetchFromApi("cashflow/accounts");
-  },
-  createAccount(data) {
-    return fetchFromApi("cashflow/accounts", {
-      method: "POST",
-      body: data,
-    });
-  },
-  updateAccount(id, data) {
-    return fetchFromApi(`cashflow/accounts/${id}`, {
-      method: "PUT",
-      body: data,
-    });
-  },
-  deleteAccount(id) {
-    return fetchFromApi(`cashflow/accounts/${id}`, {
-      method: "DELETE",
-    });
-  },
-  getCashflowCategories() {
-    return fetchFromApi("cashflow-categories");
-  },
-  createCashflowTransaction(transactionData) {
-    return fetchFromApi("cashflow", {
-      method: "POST",
-      body: transactionData,
-    });
-  },
-  getCashflow() {
-    return fetchFromApi("cashflow");
-  },
-  updateCashflow(id, data) {
-    return fetchFromApi(`cashflow/${id}`, {
-      method: "PUT",
-      body: data,
-    });
-  },
-  deleteCashflow(id) {
-    return fetchFromApi(`cashflow/${id}`, {
-      method: "DELETE",
-    });
-  },
-
-  // --- General ---
-  testApi() {
-    return fetchFromApi("test");
-  },
+  // --- Мероприятия (Events) ---
   getEvents() {
-    return fetchFromApi("events");
+    return apiClient.get("/events");
   },
   getEvent(id) {
-    return fetchFromApi(`events/${id}`);
+    return apiClient.get(`/events/${id}`);
   },
-  getVenues() {
-    return fetchFromApi("venues");
+  createEvent(event) {
+    return apiClient.post("/events", event);
   },
-  createVenue(data) {
-    return fetchFromApi("venues", {
-      method: "POST",
-      body: data,
-    });
-  },
-  updateVenue(id, data) {
-    return fetchFromApi(`venues/${id}`, {
-      method: "PUT",
-      body: data,
-    });
-  },
-  deleteVenue(id) {
-    return fetchFromApi(`venues/${id}`, {
-      method: "DELETE",
-    });
-  },
-  getEventCategories() {
-    return fetchFromApi("event-categories");
-  },
-  createEventCategory(data) {
-    return fetchFromApi("event-categories", {
-      method: "POST",
-      body: data,
-    });
-  },
-  updateEventCategory(id, data) {
-    return fetchFromApi(`event-categories/${id}`, {
-      method: "PUT",
-      body: data,
-    });
-  },
-  deleteEventCategory(id) {
-    return fetchFromApi(`event-categories/${id}`, {
-      method: "DELETE",
-    });
-  },
-  createCashflowCategory(data) {
-    return fetchFromApi("cashflow-categories", {
-      method: "POST",
-      body: data,
-    });
-  },
-  updateCashflowCategory(id, data) {
-    return fetchFromApi(`cashflow-categories/${id}`, {
-      method: "PUT",
-      body: data,
-    });
-  },
-  deleteCashflowCategory(id) {
-    return fetchFromApi(`cashflow-categories/${id}`, {
-      method: "DELETE",
-    });
-  },
-  getCustomers() {
-    return fetchFromApi("customers");
-  },
-  createCustomer(data) {
-    return fetchFromApi("customers", {
-      method: "POST",
-      body: data,
-    });
-  },
-  updateCustomer(id, data) {
-    return fetchFromApi(`customers/${id}`, {
-      method: "PUT",
-      body: data,
-    });
-  },
-  deleteCustomer(id) {
-    return fetchFromApi(`customers/${id}`, {
-      method: "DELETE",
-    });
-  },
-  createEvent(eventData) {
-    return fetchFromApi("events", {
-      method: "POST",
-      body: eventData,
-    });
-  },
-  updateEvent(id, eventData) {
-    return fetchFromApi(`events/${id}`, {
-      method: "PUT",
-      body: eventData,
-    });
+  updateEvent(id, event) {
+    return apiClient.put(`/events/${id}`, event);
   },
   deleteEvent(id) {
-    return fetchFromApi(`events/${id}`, {
-      method: "DELETE",
-    });
+    return apiClient.delete(`/events/${id}`);
   },
 
-  // --- Contacts ---
-  createContact(data) {
-    return fetchFromApi("contacts", {
-      method: "POST",
-      body: data,
-    });
+  // --- Справочники ---
+  getEventCategories() {
+    return apiClient.get("/event-categories");
   },
-  updateContact(id, data) {
-    return fetchFromApi(`contacts/${id}`, {
-      method: "PUT",
-      body: data,
-    });
+  getVenues() {
+    return apiClient.get("/venues");
   },
-  deleteContact(id) {
-    return fetchFromApi(`contacts/${id}`, {
-      method: "DELETE",
-    });
+  getCustomers() {
+    return apiClient.get("/customers");
   },
-
-  // --- Tasks ---
-  getTasksForEvent(eventId) {
-    return fetchFromApi(`events/${eventId}/tasks`);
+  getParticipants() {
+    return apiClient.get("/participants");
   },
-  createTask(taskData) {
-    return fetchFromApi("tasks", {
-      method: "POST",
-      body: taskData,
-    });
+  getTeamMembers() {
+    return this.getParticipants();
   },
-  updateTask(taskId, taskData) {
-    return fetchFromApi(`tasks/${taskId}`, {
-      method: "PUT",
-      body: taskData,
-    });
+  getUsers() {
+    return apiClient.get("/users");
   },
-  deleteTask(taskId) {
-    return fetchFromApi(`tasks/${taskId}`, {
-      method: "DELETE",
-    });
+  getContacts() {
+    return apiClient.get("/contacts");
   },
 
-  // --- Documents ---
-  getDocumentsForEvent(eventId) {
-    return fetchFromApi(`events/${eventId}/documents`);
+  // --- Учет средств (Cashflow) ---
+  getCashflow(eventId = null) {
+    const params = eventId ? { eventId } : {};
+    return apiClient.get("/cashflow", { params });
   },
+  createCashflow(transaction) {
+    return apiClient.post("/cashflow", transaction);
+  },
+  updateCashflow(id, transaction) {
+    return apiClient.put(`/cashflow/${id}`, transaction);
+  },
+  deleteCashflow(id) {
+    return apiClient.delete(`/cashflow/${id}`);
+  },
+  getCashflowAccounts() {
+    return apiClient.get("/cashflow-accounts");
+  },
+  getCashflowCategories() {
+    return apiClient.get("/cashflow-categories");
+  },
+
+  // --- Шаблоны документов ---
   getDocumentTemplates() {
-    return fetchFromApi("document-templates");
+    return apiClient.get("/document-templates");
   },
   getDocumentTemplate(id) {
-    return fetchFromApi(`document-templates/${id}`);
+    return apiClient.get(`/document-templates/${id}`);
   },
-  createDocumentTemplate(data) {
-    return fetchFromApi("document-templates", { method: "POST", body: data });
+  createDocumentTemplate(template) {
+    return apiClient.post("/document-templates", template);
   },
-  updateDocumentTemplate(id, data) {
-    return fetchFromApi(`document-templates/${id}`, {
-      method: "PUT",
-      body: data,
-    });
+  updateDocumentTemplate(id, template) {
+    return apiClient.put(`/document-templates/${id}`, template);
   },
   deleteDocumentTemplate(id) {
-    return fetchFromApi(`document-templates/${id}`, { method: "DELETE" });
+    return apiClient.delete(`/document-templates/${id}`);
   },
-  async generateDocument(data) {
-    NProgress.start();
-    try {
-      const response = await fetch(`${API_URL}/documents/generate`, {
-        method: "POST",
-        body: JSON.stringify(data),
-        headers: { "Content-Type": "application/json" },
-      });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({
-          message: "Произошла неизвестная ошибка на сервере.",
-        }));
-        throw new Error(
-          errorData.message || `Ошибка сервера: ${response.statusText}`
-        );
-      }
-
-      const blob = await response.blob();
-      let filename = `document.pdf`;
-      const disposition = response.headers.get("Content-Disposition");
-      if (disposition && disposition.indexOf("attachment") !== -1) {
-        const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
-        const matches = filenameRegex.exec(disposition);
-        if (matches != null && matches[1]) {
-          filename = matches[1].replace(/['"]/g, "");
-        }
-      }
-
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.style.display = "none";
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      a.remove();
-
-      document.querySelector("#nprogress .bar").style.backgroundColor =
-        "#28a745";
-      return { success: true }; // Возвращаем успех для обработки в компоненте
-    } catch (error) {
-      console.error(`Не удалось сгенерировать документ:`, error);
-      if (document.querySelector("#nprogress .bar")) {
-        document.querySelector("#nprogress .bar").style.backgroundColor =
-          "#dc3545";
-      }
-      throw error;
-    } finally {
-      NProgress.done();
-    }
-  },
+  // --- Документы ---
   getDocuments() {
-    return fetchFromApi("documents");
+    return apiClient.get("/documents");
   },
-  createDocument(data) {
-    return fetchFromApi("documents", {
-      method: "POST",
-      body: data,
+  getEventDocuments(eventId) {
+    return apiClient.get(`/events/${eventId}/documents`);
+  },
+  generateDocument(eventId, templateId) {
+    return apiClient.post("/documents/generate", {
+      eventId: eventId,
+      templateId: templateId,
     });
   },
-  updateDocument(id, data) {
-    return fetchFromApi(`documents/${id}`, {
-      method: "PUT",
-      body: data,
+  downloadDocument(documentId) {
+    return apiClient.get(`/documents/${documentId}/download`, {
+      responseType: "blob",
     });
   },
-  deleteDocument(id) {
-    return fetchFromApi(`documents/${id}`, { method: "DELETE" });
-  },
-  getDocumentDownloadUrl(id) {
-    return `${API_URL}/documents/${id}/download`;
-  },
-  async downloadDocument(id) {
-    NProgress.start();
-    try {
-      const response = await fetch(`${API_URL}/documents/${id}/download`);
-      if (!response.ok) {
-        throw new Error(`Ошибка при скачивании файла: ${response.statusText}`);
-      }
-
-      const blob = await response.blob();
-
-      let filename = `document-${id}.pdf`;
-      const disposition = response.headers.get("Content-Disposition");
-      if (disposition && disposition.indexOf("attachment") !== -1) {
-        const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
-        const matches = filenameRegex.exec(disposition);
-        if (matches != null && matches[1]) {
-          filename = matches[1].replace(/['"]/g, "");
-        }
-      }
-
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.style.display = "none";
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      a.remove();
-
-      document.querySelector("#nprogress .bar").style.backgroundColor =
-        "#28a745";
-    } catch (error) {
-      console.error(`Не удалось скачать документ: ${id}`, error);
-      if (document.querySelector("#nprogress .bar")) {
-        document.querySelector("#nprogress .bar").style.backgroundColor =
-          "#dc3545";
-      }
-      throw error; // Передаем ошибку дальше, чтобы компонент мог ее обработать
-    } finally {
-      NProgress.done();
-    }
+  deleteDocument(documentId) {
+    return apiClient.delete(`/documents/${documentId}`);
   },
 
-  // --- Users ---
-  getUsers() {
-    return fetchFromApi("users");
+  // --- Задачи (Todo List) ---
+  getTasksForEvent(eventId) {
+    return apiClient.get(`/events/${eventId}/tasks`);
   },
-  createUser(data) {
-    return fetchFromApi("users", {
-      method: "POST",
-      body: data,
-    });
+  createTask(task) {
+    return apiClient.post("/tasks", task);
   },
-  updateUser(id, data) {
-    return fetchFromApi(`users/${id}`, {
-      method: "PUT",
-      body: data,
-    });
+  updateTask(id, task) {
+    return apiClient.put(`/tasks/${id}`, task);
   },
-  deleteUser(id) {
-    return fetchFromApi(`users/${id}`, {
-      method: "DELETE",
-    });
+  deleteTask(id) {
+    return apiClient.delete(`/tasks/${id}`);
   },
 
-  getTeamMembers() {
-    return fetchFromApi("team-members");
+  // --- Реквизиты компании ---
+  getCompanyDetails() {
+    return apiClient.get("/company-details");
   },
-  getEventParticipants(eventId) {
-    return fetchFromApi(`events/${eventId}/participants`);
+  createCompanyDetails(details) {
+    return apiClient.post("/company-details", details);
   },
-  addParticipant(eventId, uniqueId) {
-    return fetchFromApi(`events/${eventId}/participants`, {
-      method: "POST",
-      body: { uniqueId },
-    });
+  updateCompanyDetails(id, details) {
+    return apiClient.put(`/company-details/${id}`, details);
+  },
+  deleteCompanyDetails(id) {
+    return apiClient.delete(`/company-details/${id}`);
+  },
+
+  // --- Привязка Telegram ---
+  generateLinkCode() {
+    return apiClient.post("/users/me/generate-link-code");
   },
 };
+
+export default apiService;

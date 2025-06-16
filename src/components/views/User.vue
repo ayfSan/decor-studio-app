@@ -193,6 +193,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from "vue";
 import apiService from "@/services/api.service";
+import { useAuthStore } from "@/store/auth.store";
 import NProgress from "nprogress";
 
 const users = ref([]);
@@ -204,6 +205,7 @@ const currentUser = ref({});
 const isEditMode = ref(false);
 const itemsPerPage = 9;
 const currentPage = ref(1);
+const authStore = useAuthStore();
 
 const defaultUser = {
   telegram_id: null,
@@ -216,28 +218,21 @@ const defaultUser = {
 async function loadUsers() {
   isLoading.value = true;
   loadingError.value = null;
-  NProgress.start();
   try {
     const response = await apiService.getUsers();
-    if (response.success) {
-      users.value = response.data;
-    } else {
-      throw new Error(
-        response.message || "Не удалось получить список пользователей"
-      );
-    }
+    users.value = response.data.data;
   } catch (error) {
     console.error("Failed to load users:", error);
     loadingError.value =
-      error.message ||
-      "Произошла неизвестная ошибка при загрузке пользователей.";
+      "Произошла критическая ошибка при загрузке пользователей.";
   } finally {
     isLoading.value = false;
-    NProgress.done();
   }
 }
 
-onMounted(loadUsers);
+onMounted(() => {
+  loadUsers();
+});
 
 const filteredUsers = computed(() => {
   if (!searchQuery.value) {
@@ -283,35 +278,54 @@ function closeModal() {
 }
 
 async function saveUser() {
-  NProgress.start();
   try {
+    let response;
     if (isEditMode.value) {
-      await apiService.updateUser(currentUser.value.id, currentUser.value);
+      response = await apiService.updateUser(
+        currentUser.value.id,
+        currentUser.value
+      );
     } else {
-      await apiService.createUser(currentUser.value);
+      response = await apiService.createUser(currentUser.value);
     }
-    await loadUsers();
-    closeModal();
+
+    if (response.data.success) {
+      closeModal();
+      loadUsers();
+    } else {
+      alert(
+        `Ошибка: ${
+          response.data.message || "Не удалось сохранить пользователя."
+        }`
+      );
+    }
   } catch (error) {
-    console.error("Failed to save user:", error);
-    alert(`Ошибка сохранения пользователя: ${error.message}`);
-  } finally {
-    NProgress.done();
+    console.error("Error saving user:", error);
+    alert("Произошла критическая ошибка при сохранении пользователя.");
   }
 }
 
-async function confirmDeleteItem(id) {
+function confirmDeleteItem(id) {
   if (confirm("Вы уверены, что хотите удалить этого пользователя?")) {
-    NProgress.start();
-    try {
-      await apiService.deleteUser(id);
-      await loadUsers();
-    } catch (error) {
-      console.error("Failed to delete user:", error);
-      alert(`Ошибка удаления пользователя: ${error.message}`);
-    } finally {
-      NProgress.done();
+    deleteItem(id);
+  }
+}
+
+async function deleteItem(id) {
+  try {
+    const response = await apiService.deleteUser(id);
+    if (response.data.success) {
+      loadUsers();
+    } else {
+      alert(
+        `Ошибка удаления: ${
+          response.data.message || "Не удалось удалить пользователя."
+        }`
+      );
     }
+  } catch (error) {
+    console.error("Error deleting user:", error);
+    alert("Произошла критическая ошибка при удалении пользователя.");
   }
 }
 

@@ -313,8 +313,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
+import { useAuthStore } from "@/store/auth.store";
 import apiService from "@/services/api.service.js";
 import {
   formatDate,
@@ -324,15 +325,18 @@ import {
 import NProgress from "nprogress";
 
 const router = useRouter();
+const authStore = useAuthStore();
 
 // Data stores
 const events = ref([]);
 const eventCategories = ref([]);
 const venuesList = ref([]);
 const customersList = ref([]);
-const allTeamMembers = ref([]);
+const participantsList = ref([]);
+const documentTemplates = ref([]);
 const searchQuery = ref("");
 const isLoading = ref(true);
+const error = ref(null);
 
 // Event Modal state
 const isEventModalOpen = ref(false);
@@ -346,43 +350,61 @@ const participantSearchQuery = ref("");
 // Accordion state
 const expandedGroups = ref({});
 
-// --- DATA LOADING ---
-const loadAllSupportingData = async () => {
+onMounted(() => {
+  loadEvents();
+});
+
+async function loadEvents() {
+  isLoading.value = true;
+  error.value = null;
   try {
-    const [categoriesRes, venuesRes, customersRes, teamMembersRes] =
+    const response = await apiService.getEvents();
+    events.value = response.data.data;
+  } catch (err) {
+    console.error("Failed to load events:", err);
+    error.value = "Не удалось загрузить мероприятия.";
+  } finally {
+    isLoading.value = false;
+  }
+}
+
+// --- DATA LOADING ---
+const loadModalData = async () => {
+  try {
+    const [categoriesRes, venuesRes, customersRes, templatesRes] =
       await Promise.all([
         apiService.getEventCategories(),
         apiService.getVenues(),
         apiService.getCustomers(),
-        apiService.getTeamMembers(),
+        apiService.getDocumentTemplates(),
       ]);
-    eventCategories.value = categoriesRes.success ? categoriesRes.data : [];
-    venuesList.value = venuesRes.success ? venuesRes.data : [];
-    customersList.value = customersRes.success ? customersRes.data : [];
-    allTeamMembers.value = teamMembersRes.success ? teamMembersRes.data : [];
+    eventCategories.value = categoriesRes.data.data;
+    venuesList.value = venuesRes.data.data;
+    customersList.value = customersRes.data.data;
+    documentTemplates.value = templatesRes.data.data;
   } catch (error) {
-    console.error("Error loading supporting data:", error);
+    console.error("Failed to load modal prerequisites:", error);
   }
 };
 
-async function loadEvents() {
-  isLoading.value = true;
-  NProgress.start();
-  try {
-    const response = await apiService.getEvents();
-    events.value = response.success ? response.data : [];
-  } catch (error) {
-    console.error("Error loading events:", error);
-  } finally {
-    isLoading.value = false;
-    NProgress.done();
-  }
-}
-
-onMounted(() => {
-  loadEvents();
-  loadAllSupportingData();
-});
+watch(
+  () => authStore.isAuthenticated,
+  (isAuth) => {
+    if (isAuth) {
+      loadEvents();
+      loadModalData();
+    } else {
+      // Очищаем данные, если пользователь вышел
+      events.value = [];
+      eventCategories.value = [];
+      venuesList.value = [];
+      customersList.value = [];
+      participantsList.value = [];
+      documentTemplates.value = [];
+    }
+  },
+  { immediate: true }
+);
 
 // --- DISPLAY LOGIC ---
 const filteredEvents = computed(() => {
@@ -418,26 +440,15 @@ const isGroupExpanded = (groupId) => expandedGroups.value[groupId] !== false;
 
 // --- EVENT MODAL LOGIC ---
 const openAddEventModal = () => {
-  currentEvent.value = {
-    date: new Date().toISOString().slice(0, 16),
-    project_name: "",
-    category_event_idcategory_event: null,
-    venue_idvenue: null,
-    customer_idcustomer: null,
-    cost: 0.0,
-    participants: [], // Initialize as an empty array
-  };
+  currentEvent.value = JSON.parse(JSON.stringify(defaultEvent));
   isEventModalOpen.value = true;
+  loadModalData();
 };
 
 const openEditEventModal = (event) => {
-  isEditMode.value = true;
-  // Мы должны убедиться, что дата в формате, понятном для <input type="datetime-local">
-  const dateForInput = event.date
-    ? new Date(event.date).toISOString().slice(0, 16)
-    : "";
-  currentEvent.value = { ...event, date: dateForInput };
+  currentEvent.value = JSON.parse(JSON.stringify(event));
   isEventModalOpen.value = true;
+  loadModalData();
 };
 
 const closeEventModal = () => {
@@ -446,23 +457,26 @@ const closeEventModal = () => {
 };
 
 const saveEvent = async () => {
-  if (!currentEvent.value) return;
-  NProgress.start();
+  if (!currentEvent.value.project_name) {
+    alert("Название мероприятия обязательно для заполнения.");
+    return;
+  }
   try {
-    // We are only creating events here, not editing
-    const response = await apiService.createEvent(currentEvent.value);
-    if (response.success) {
-      await loadEvents();
-      closeEventModal();
-    } else {
-      console.error("Failed to create event:", response.message);
-      alert("Не удалось создать мероприятие.");
-    }
+    // Вне зависимости от того, редактирование это или создание,
+    // отправляем весь объект currentEvent. Сервер разберется.
+    const response = currentEvent.value.idevent
+      ? await apiService.updateEvent(
+          currentEvent.value.idevent,
+          currentEvent.value
+        )
+      : await apiService.createEvent(currentEvent.value);
+
+    // Успешный ответ от axios не требует проверки response.data.success
+    closeEventModal();
+    await loadEvents(); // Перезагружаем список
   } catch (error) {
-    console.error("Error saving event:", error);
-    alert("Произошла ошибка при создании мероприятия.");
-  } finally {
-    NProgress.done();
+    console.error("Failed to save event:", error);
+    alert(`Ошибка: ${error.response?.data?.message || error.message}`);
   }
 };
 
@@ -472,7 +486,7 @@ const filteredTeamMembers = computed(() => {
   const addedIds = new Set(
     currentEvent.value.participants.map((p) => p.uniqueId)
   );
-  let available = allTeamMembers.value.filter(
+  let available = participantsList.value.filter(
     (member) => !addedIds.has(member.uniqueId)
   );
   if (participantSearchQuery.value) {

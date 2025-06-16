@@ -40,29 +40,18 @@ async function loadDashboardData() {
   isLoading.value = true;
   loadingError.value = null;
   try {
-    // Parallel fetching for critical data
     const [statsRes, upcomingEventsRes] = await Promise.all([
       apiService.getStatistics(),
       apiService.getUpcomingEvents(),
     ]);
 
-    if (statsRes.success) {
-      stats.value = statsRes.data;
-    } else {
-      throw new Error(statsRes.message || "Failed to load statistics");
-    }
-
-    if (upcomingEventsRes.success) {
-      upcomingEvents.value = upcomingEventsRes.data;
-    } else {
-      throw new Error(
-        upcomingEventsRes.message || "Failed to load upcoming events"
-      );
-    }
+    stats.value = statsRes.data.data;
+    upcomingEvents.value = upcomingEventsRes.data.data;
   } catch (error) {
     console.error("Failed to load dashboard data:", error);
     loadingError.value =
       "Не удалось загрузить данные для панели управления. Пожалуйста, попробуйте еще раз.";
+    // Перехватчик axios обработает 401/403 ошибки и выполнит выход.
   } finally {
     isLoading.value = false;
   }
@@ -76,9 +65,9 @@ async function loadModalData() {
       apiService.getCashflowCategories(),
       apiService.getEvents(),
     ]);
-    if (accountsRes.success) accountsForModal.value = accountsRes.data;
-    if (categoriesRes.success) categoriesForModal.value = categoriesRes.data;
-    if (allEventsRes.success) eventsListForModal.value = allEventsRes.data;
+    accountsForModal.value = accountsRes.data.data;
+    categoriesForModal.value = categoriesRes.data.data;
+    eventsListForModal.value = allEventsRes.data.data;
   } catch (error) {
     console.error("Failed to load modal data:", error);
     // Optionally show an error to the user inside the modal
@@ -101,17 +90,15 @@ function closeTransactionModal() {
 
 async function saveTransaction() {
   try {
-    const response = await apiService.createCashflowTransaction(
-      currentTransaction.value
-    );
-    if (response.success) {
+    const response = await apiService.createCashflow(currentTransaction.value);
+    if (response.data.success) {
       // Maybe show a success notification
-      console.log("Transaction saved successfully:", response.data);
+      console.log("Transaction saved successfully:", response.data.data);
       closeTransactionModal();
       // Optional: you might want to refresh some data here
     } else {
-      console.error("Failed to save transaction:", response.message);
-      alert(`Ошибка: ${response.message}`);
+      console.error("Failed to save transaction:", response.data.message);
+      alert(`Ошибка: ${response.data.message}`);
     }
   } catch (error) {
     console.error("Error saving transaction:", error);

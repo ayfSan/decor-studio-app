@@ -424,6 +424,7 @@
 <script setup>
 import { ref, onMounted, computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useAuthStore } from "@/store/auth.store";
 import apiService from "@/services/api.service.js";
 import { formatCurrency, formatDate } from "@/utils/formatters";
 import NProgress from "nprogress";
@@ -439,13 +440,14 @@ const route = useRoute();
 const router = useRouter();
 
 const event = ref(null);
-const loading = ref(true);
 const eventCategories = ref([]);
 const venuesList = ref([]);
 const customersList = ref([]);
-const allContacts = ref([]); // This holds the combined list of users and contacts for team selection
-const eventParticipants = ref([]); // This holds the participants of the currently viewed event
 const eventDocuments = ref([]);
+const documentTemplates = ref([]);
+const teamMembers = ref([]);
+
+const loading = ref(true);
 const documentsLoading = ref(true);
 
 const isEditModalOpen = ref(false);
@@ -454,11 +456,12 @@ const currentEditEvent = ref(null);
 const isAddParticipantModalOpen = ref(false);
 
 const isGenerateDocModalOpen = ref(false);
-const documentTemplates = ref([]);
 const selectedTemplateId = ref(null);
 const isGenerating = ref(false);
 
 const participantSearchQuery = ref("");
+
+const eventParticipants = computed(() => event.value?.participants || []);
 
 const filteredTeamMembers = computed(() => {
   if (!isAddParticipantModalOpen.value || !currentEditEvent.value) {
@@ -469,7 +472,7 @@ const filteredTeamMembers = computed(() => {
     (currentEditEvent.value.participants || []).map((p) => p.uniqueId)
   );
 
-  let availableMembers = allContacts.value.filter(
+  let availableMembers = teamMembers.value.filter(
     (member) => !participantsInFormIds.has(member.uniqueId)
   );
 
@@ -488,9 +491,9 @@ const filteredTeamMembers = computed(() => {
 const fetchEventDocuments = async () => {
   documentsLoading.value = true;
   try {
-    const res = await apiService.getDocumentsForEvent(props.eventId);
-    if (res.success) {
-      eventDocuments.value = res.data;
+    const res = await apiService.getEventDocuments(props.eventId);
+    if (res.data.success) {
+      eventDocuments.value = res.data.data;
     }
   } catch (error) {
     console.error("Failed to fetch event documents:", error);
@@ -520,18 +523,33 @@ const handleGenerateDocument = async () => {
   }
   isGenerating.value = true;
   try {
-    const res = await apiService.generateDocument({
-      eventId: event.value.idevent,
-      templateId: selectedTemplateId.value,
-    });
+    const response = await apiService.generateDocument(
+      props.eventId,
+      selectedTemplateId.value
+    );
 
-    if (res.success) {
-      closeGenerateDocModal();
-      await fetchEventDocuments();
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement("a");
+    link.href = url;
+
+    const contentDisposition = response.headers["content-disposition"];
+    let fileName = `document-${props.eventId}.pdf`;
+    if (contentDisposition) {
+      const fileNameMatch = contentDisposition.match(/filename="(.+)"/);
+      if (fileNameMatch.length === 2) fileName = fileNameMatch[1];
     }
+
+    link.setAttribute("download", fileName);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+
+    closeGenerateDocModal();
+    await fetchEventDocuments();
   } catch (error) {
-    console.error("Ошибка при генерации документа:", error);
-    alert(`Не удалось создать документ: ${error.message}`);
+    console.error("Error generating document:", error);
+    alert("Не удалось сгенерировать документ.");
   } finally {
     isGenerating.value = false;
   }
@@ -545,22 +563,16 @@ const fetchEventData = async () => {
   loading.value = true;
   NProgress.start();
   try {
-    // 1. Сначала получаем основные данные о мероприятии
-    const res = await apiService.getEvent(props.eventId);
-    if (!res.success) {
+    const response = await apiService.getEvent(props.eventId);
+    if (response.data.success) {
+      event.value = response.data.data;
+    } else {
+      console.error("Event not found or failed to load", response.data.message);
       event.value = null;
-      // Можно выбросить ошибку, чтобы она была поймана в catch блоке
-      throw new Error("Не удалось получить данные о мероприятии");
     }
-
-    event.value = res.data;
-    eventParticipants.value = res.data.participants || [];
-
-    // 2. После успеха, параллельно загружаем все остальные данные
-    await Promise.all([fetchPrerequisites(), fetchEventDocuments()]);
   } catch (error) {
-    console.error("Не удалось загрузить данные о мероприятии:", error);
-    event.value = null; // Убедимся, что при ошибке event сбрасывается
+    console.error("Error loading event data:", error);
+    event.value = null;
   } finally {
     loading.value = false;
     NProgress.done();
@@ -569,20 +581,22 @@ const fetchEventData = async () => {
 
 const fetchPrerequisites = async () => {
   try {
-    const [teamMembersRes, categoriesRes, venuesRes, customersRes] =
-      await Promise.all([
-        apiService.getTeamMembers(),
+    const [categoriesRes, venuesRes, customersRes, teamRes] = await Promise.all(
+      [
         apiService.getEventCategories(),
         apiService.getVenues(),
         apiService.getCustomers(),
-      ]);
+        apiService.getTeamMembers(),
+      ]
+    );
 
-    allContacts.value = teamMembersRes.success ? teamMembersRes.data : [];
-    eventCategories.value = categoriesRes.success ? categoriesRes.data : [];
-    venuesList.value = venuesRes.success ? venuesRes.data : [];
-    customersList.value = customersRes.success ? customersRes.data : [];
+    if (categoriesRes.data.success)
+      eventCategories.value = categoriesRes.data.data;
+    if (venuesRes.data.success) venuesList.value = venuesRes.data.data;
+    if (customersRes.data.success) customersList.value = customersRes.data.data;
+    if (teamRes.data.success) teamMembers.value = teamRes.data.data;
   } catch (error) {
-    console.error("Error loading supporting data:", error);
+    console.error("Failed to load prerequisites:", error);
   }
 };
 
@@ -608,24 +622,20 @@ const closeEditModal = () => {
 
 const handleUpdateEvent = async () => {
   if (!currentEditEvent.value) return;
-  NProgress.start();
   try {
     const response = await apiService.updateEvent(
       currentEditEvent.value.idevent,
       currentEditEvent.value
     );
-    if (response.success) {
+    if (response.data.success) {
       closeEditModal();
       await fetchEventData();
     } else {
-      console.error("Failed to update event:", response.message);
-      alert("Не удалось обновить мероприятие.");
+      alert(`Ошибка обновления: ${response.data.message}`);
     }
   } catch (error) {
-    console.error("Error saving event:", error);
-    alert("Произошла ошибка при сохранении.");
-  } finally {
-    NProgress.done();
+    console.error("Error updating event:", error);
+    alert("Произошла критическая ошибка при обновлении мероприятия.");
   }
 };
 
@@ -638,10 +648,10 @@ const confirmDeleteEvent = async (eventToDelete) => {
     NProgress.start();
     try {
       const response = await apiService.deleteEvent(eventToDelete.idevent);
-      if (response.success) {
+      if (response.data.success) {
         router.push("/events");
       } else {
-        alert(`Не удалось удалить мероприятие: ${response.message}`);
+        alert(`Не удалось удалить мероприятие: ${response.data.message}`);
       }
     } catch (error) {
       console.error("Error deleting event:", error);
@@ -682,8 +692,8 @@ function removeParticipantFromForm(participantUniqueId) {
 }
 
 const openGenerateDocModal = () => {
-  isGenerateDocModalOpen.value = true;
   fetchDocumentTemplates();
+  isGenerateDocModalOpen.value = true;
 };
 
 const closeGenerateDocModal = () => {
@@ -694,8 +704,8 @@ const closeGenerateDocModal = () => {
 const fetchDocumentTemplates = async () => {
   try {
     const res = await apiService.getDocumentTemplates();
-    if (res.success) {
-      documentTemplates.value = res.data;
+    if (res.data.success) {
+      documentTemplates.value = res.data.data;
     } else {
       documentTemplates.value = [];
     }
@@ -707,6 +717,8 @@ const fetchDocumentTemplates = async () => {
 
 onMounted(() => {
   fetchEventData();
+  fetchPrerequisites();
+  fetchEventDocuments();
 });
 
 const getCategoryName = (id) =>

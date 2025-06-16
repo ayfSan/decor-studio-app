@@ -231,27 +231,61 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import apiService from "@/services/api.service.js";
+import { useAuthStore } from "@/store/auth.store";
 
 defineEmits(["close-menu"]);
 
 const upcomingEvents = ref([]);
+const authStore = useAuthStore();
 
-onMounted(async () => {
+async function fetchUpcomingEvents() {
+  // Загружаем события, только если пользователь аутентифицирован
+  if (!authStore.isAuthenticated) {
+    upcomingEvents.value = []; // Очищаем список, если пользователь вышел
+    return;
+  }
+
   try {
     const res = await apiService.getUpcomingEvents();
-    if (res.success) {
-      upcomingEvents.value = res.data;
+    // Ответ axios содержит данные в поле `data`
+    if (res.data.success) {
+      upcomingEvents.value = res.data.data;
+    } else {
+      console.error(
+        "Failed to load upcoming events for navbar:",
+        res.data.message
+      );
     }
   } catch (error) {
-    console.error("Failed to load upcoming events for navbar:", error);
+    // Не выводим ошибку 401 в консоль, т.к. это ожидаемое поведение при выходе
+    if (error.response?.status !== 401) {
+      console.error("Failed to load upcoming events for navbar:", error);
+    }
   }
-});
+}
+
+// Загружаем данные при монтировании компонента, если пользователь уже вошел
+onMounted(fetchUpcomingEvents);
+
+// И следим за изменением статуса аутентификации
+// Например, когда пользователь входит в систему, isAuthenticated станет true, и мы загрузим данные
+watch(
+  () => authStore.isAuthenticated,
+  (isAuth) => {
+    if (isAuth) {
+      fetchUpcomingEvents();
+    } else {
+      // Если пользователь вышел, очищаем список
+      upcomingEvents.value = [];
+    }
+  },
+  { immediate: true }
+); // immediate: true вызовет обработчик сразу при инициализации
 
 const displayUpcomingEvents = computed(() => {
-  // API already returns sorted upcoming events, we just slice for display
-  return upcomingEvents.value.slice(0, 3);
+  return upcomingEvents.value.slice(0, 5); // Показываем не более 5
 });
 
 function formatDate(dateString) {

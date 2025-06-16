@@ -1,9 +1,11 @@
 const TelegramBot = require("node-telegram-bot-api");
 const logger = require("./logger.cjs");
+const axios = require("axios");
 require("dotenv").config();
 
 const token = process.env.BOT_TOKEN;
 const webAppUrl = process.env.WEBAPP_URL;
+const apiUrl = process.env.API_URL || "http://localhost:3000/api";
 
 // Функция для формирования URL с учетом базового пути
 const getWebAppUrl = (path = "") => {
@@ -71,8 +73,79 @@ async function sendHelp(msg) {
 *Дополнительные команды:*
 /stats - показать вашу статистику
 /start - перезапустить бота
+/link <code> - привязать ваш Telegram к аккаунту в CRM
 `;
   bot.sendMessage(chatId, helpText, { parse_mode: "Markdown" });
+}
+
+// --- Логика привязки аккаунта ---
+
+// 1. Обработка команды /link <code>
+bot.onText(/\/link (.+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const code = match[1]; // Код из сообщения
+  await handleLinkCommand(chatId, code);
+});
+
+// 2. Обработка сообщений, которые могут быть кодом привязки
+// Проверяем, что сообщение состоит из 6 символов (буквы и цифры)
+bot.onText(/^[A-Z0-9]{6}$/, async (msg) => {
+  // Исключаем обработку, если это была команда /link
+  if (msg.text.startsWith("/")) return;
+
+  const chatId = msg.chat.id;
+  const code = msg.text;
+  await handleLinkCommand(chatId, code);
+});
+
+// 3. Основная функция для привязки
+async function handleLinkCommand(chatId, code) {
+  await logger.logCommand(chatId, "link", { code });
+
+  try {
+    // Отправляем запрос на наш бэкенд для верификации кода
+    const response = await axios.post(`${apiUrl}/telegram/link-account`, {
+      code: code,
+      chat_id: chatId,
+    });
+
+    if (response.data.success) {
+      bot.sendMessage(
+        chatId,
+        "✅ Отлично! Ваш Telegram-аккаунт успешно привязан к профилю в CRM."
+      );
+      await logger.logInfo(
+        `Account linked for chatId ${chatId} with code ${code}`
+      );
+    }
+  } catch (error) {
+    let errorMessage = "Произошла неизвестная ошибка.";
+    if (error.response) {
+      // Ошибки, которые вернул наш API
+      switch (error.response.status) {
+        case 404:
+          errorMessage =
+            "❌ Упс! Код не найден или срок его действия истек. Попробуйте получить новый код в настройках профиля.";
+          break;
+        case 409:
+          errorMessage =
+            "❌ Этот Telegram-аккаунт уже привязан к другому пользователю.";
+          break;
+        default:
+          errorMessage = `❌ Ошибка сервера: ${
+            error.response.data.message || "Не удалось завершить привязку."
+          }`;
+      }
+    } else {
+      // Сетевые или другие ошибки axios
+      errorMessage = "❌ Не удалось связаться с сервером для проверки кода.";
+    }
+
+    bot.sendMessage(chatId, errorMessage);
+    await logger.logError(
+      `Failed to link account for chatId ${chatId}. Error: ${error.message}`
+    );
+  }
 }
 
 // Обработка кнопок клавиатуры
@@ -257,7 +330,7 @@ _Транзакция сохранена в системе и доступна �
           ],
         },
       });
-  } catch (error) {
+    } catch (error) {
       await logger.logError(chatId, error, {
         type: "transaction",
         data: { eventTag, date, amount, description },

@@ -138,6 +138,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from "vue";
 import apiService from "@/services/api.service";
+import { useAuthStore } from "@/store/auth.store";
 import NProgress from "nprogress";
 import usePagination from "@/composables/usePagination";
 
@@ -147,6 +148,7 @@ const isModalOpen = ref(false);
 const currentItem = ref({});
 const isEditMode = ref(false);
 const searchQuery = ref("");
+const authStore = useAuthStore();
 
 const defaultItem = { name: "" };
 
@@ -154,10 +156,8 @@ async function loadData() {
   isLoading.value = true;
   NProgress.start();
   try {
-    const response = await apiService.getAccounts();
-    if (response.success) {
-      accounts.value = response.data;
-    }
+    const response = await apiService.getCashflowAccounts();
+    accounts.value = response.data.data;
   } catch (error) {
     console.error("Failed to load accounts:", error);
   } finally {
@@ -166,7 +166,21 @@ async function loadData() {
   }
 }
 
-onMounted(loadData);
+onMounted(() => {
+  loadData();
+});
+
+watch(
+  () => authStore.isAuthenticated,
+  (isAuth) => {
+    if (isAuth) {
+      loadData();
+    } else {
+      accounts.value = [];
+    }
+  },
+  { immediate: true }
+);
 
 const filteredItems = computed(() => {
   if (!searchQuery.value) {
@@ -208,11 +222,18 @@ async function saveItem() {
   NProgress.start();
   try {
     if (isEditMode.value) {
-      await apiService.updateAccount(currentItem.value.idaccount_cashflow, {
+      const response = await apiService.updateAccountCashflow(
+        currentItem.value.idaccount_cashflow,
+        {
+          name: currentItem.value.name,
+        }
+      );
+      if (!response.data.success) throw new Error(response.data.message);
+    } else {
+      const response = await apiService.createAccountCashflow({
         name: currentItem.value.name,
       });
-    } else {
-      await apiService.createAccount({ name: currentItem.value.name });
+      if (!response.data.success) throw new Error(response.data.message);
     }
     await loadData();
     closeModal();
@@ -228,7 +249,12 @@ async function confirmDeleteItem(itemToDelete) {
   if (confirm(`Вы уверены, что хотите удалить счет "${itemToDelete.name}"?`)) {
     NProgress.start();
     try {
-      await apiService.deleteAccount(itemToDelete.idaccount_cashflow);
+      const response = await apiService.deleteAccountCashflow(
+        itemToDelete.idaccount_cashflow
+      );
+      if (!response.data.success) {
+        throw new Error(response.data.message);
+      }
       await loadData();
     } catch (error) {
       console.error("Failed to delete account:", error);

@@ -5,6 +5,14 @@ import puppeteer from "puppeteer";
 import { promises as fs } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import jwt from "jsonwebtoken";
+import dotenv from "dotenv";
+import bcrypt from "bcrypt";
+import { randomBytes } from "crypto";
+
+dotenv.config();
+
+const saltRounds = 10;
 
 // Helper to get __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -15,6 +23,211 @@ const port = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
+
+// --- AUTHENTICATION ---
+
+// Middleware to verify JWT
+const authenticateToken = (req, res, next) => {
+  console.log(`\n--- [AUTH] Authenticating request for: ${req.path} ---`);
+  const authHeader = req.headers["authorization"];
+  console.log(`[AUTH] Authorization header: ${authHeader}`);
+
+  const token = authHeader && authHeader.split(" ")[1];
+
+  if (token == null) {
+    console.log("[AUTH] Failed: No token provided.");
+    return res.sendStatus(401); // if there isn't any token
+  }
+
+  console.log(`[AUTH] Token received: ${token}`);
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err) {
+      console.error("[AUTH] Failed: Token verification error.", err.message);
+      return res.sendStatus(403);
+    }
+    console.log("[AUTH] Success: Token verified.");
+    req.user = user;
+    next();
+  });
+};
+
+// Middleware to authorize based on roles
+const authorizeRoles = (...allowedRoles) => {
+  return (req, res, next) => {
+    if (!req.user || !req.user.roles) {
+      return res
+        .status(403)
+        .json({ success: false, message: "User data is missing in token" });
+    }
+    const hasRole = req.user.roles.some((role) => allowedRoles.includes(role));
+    if (!hasRole) {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden: You do not have the required role.",
+      });
+    }
+    next();
+  };
+};
+
+// Login endpoint
+app.post("/api/auth/login", async (req, res) => {
+  console.log("\n--- [DEBUG] New Login Attempt ---");
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    console.log("[DEBUG] Login failed: Username or password not provided.");
+    return res
+      .status(400)
+      .json({ success: false, message: "Username and password are required" });
+  }
+
+  console.log(`[DEBUG] Received username: ${username}`);
+  console.log(`[DEBUG] Received password: ${password}`);
+
+  try {
+    const [users] = await pool.query("SELECT * FROM user WHERE username = ?", [
+      username,
+    ]);
+
+    if (users.length === 0) {
+      console.log(
+        `[DEBUG] Login failed: User '${username}' not found in database.`
+      );
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid credentials" });
+    }
+    const user = users[0];
+    console.log(
+      `[DEBUG] User found in DB. Stored password hash: ${user.password}`
+    );
+
+    const match = await bcrypt.compare(password, user.password);
+    console.log(`[DEBUG] bcrypt.compare result: ${match}`);
+
+    if (!match) {
+      console.log("[DEBUG] Login failed: Passwords do not match.");
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid credentials" });
+    }
+
+    console.log("[DEBUG] Login successful! Generating token...");
+    const [roles] = await pool.query(
+      "SELECT r.name FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE ur.user_id = ?",
+      [user.id]
+    );
+    const userRoles = roles.map((r) => r.name);
+
+    const accessToken = jwt.sign(
+      { id: user.id, username: user.username, roles: userRoles },
+      process.env.JWT_SECRET,
+      { expiresIn: "8h" } // Увеличим время жизни токена
+    );
+
+    res.json({
+      success: true,
+      accessToken,
+      user: {
+        id: user.id,
+        username: user.username,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        roles: userRoles,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Server error during login",
+      error: error.message,
+    });
+    console.error("[DEBUG] Server error during login:", error);
+  }
+});
+
+app.get("/api/auth/me", authenticateToken, (req, res) => {
+  // req.user is populated by the authenticateToken middleware
+  res.json({ success: true, user: req.user });
+});
+
+// --- TELEGRAM LINKING ---
+
+// Endpoint for web-app to generate a linking code for the logged-in user
+app.post(
+  "/api/users/me/generate-link-code",
+  authenticateToken,
+  async (req, res) => {
+    const userId = req.user.id;
+    try {
+      const code = randomBytes(3).toString("hex").toUpperCase(); // e.g., A4F9B1
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // Code expires in 5 minutes
+
+      await pool.query(
+        "UPDATE user SET telegram_link_code = ?, telegram_link_code_expires_at = ? WHERE id = ?",
+        [code, expiresAt, userId]
+      );
+
+      res.json({ success: true, code });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Failed to generate link code",
+        error: error.message,
+      });
+    }
+  }
+);
+
+// Endpoint for Telegram bot to link a chat_id to a user account
+// В реальном приложении этот эндпоинт нужно защитить (например, секретным токеном бота)
+app.post("/api/telegram/link-account", async (req, res) => {
+  const { code, chat_id } = req.body;
+  if (!code || !chat_id) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Code and chat_id are required" });
+  }
+
+  try {
+    const [users] = await pool.query(
+      "SELECT * FROM user WHERE telegram_link_code = ? AND telegram_link_code_expires_at > NOW()",
+      [code]
+    );
+
+    if (users.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Invalid or expired code" });
+    }
+    const user = users[0];
+
+    await pool.query(
+      "UPDATE user SET telegram_chat_id = ?, telegram_link_code = NULL, telegram_link_code_expires_at = NULL WHERE id = ?",
+      [chat_id, user.id]
+    );
+
+    // Здесь можно отправить "ответное" сообщение в Telegram, что аккаунт успешно привязан.
+    // (логика отправки сообщения ботом)
+
+    res.json({ success: true, message: "Account linked successfully" });
+  } catch (error) {
+    // Обработка случая, если chat_id уже занят (сработает UNIQUE constraint)
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({
+        success: false,
+        message: "This Telegram account is already linked to another user.",
+      });
+    }
+    res.status(500).json({
+      success: false,
+      message: "Failed to link account",
+      error: error.message,
+    });
+  }
+});
 
 // --- TEST & CORE ---
 app.get("/api/test", async (req, res) => {
@@ -34,9 +247,18 @@ app.get("/api/test", async (req, res) => {
   }
 });
 
+// --- API РОУТЕР С АУТЕНТИФИКАЦИЕЙ ---
+
+// Создаем отдельный роутер для защищенных эндпоинтов
+const apiRouter = express.Router();
+
+// Применяем middleware для проверки токена ко всем маршрутам этого роутера
+apiRouter.use(authenticateToken);
+
 // --- HOME PAGE ---
-app.get("/api/statistics", async (req, res) => {
+apiRouter.get("/statistics", async (req, res) => {
   try {
+    console.log("\n--- [DATA] Fetching data for /api/statistics ---");
     const [activeEvents] = await pool.query(
       "SELECT COUNT(*) as count FROM event WHERE date >= CURDATE()"
     );
@@ -47,15 +269,21 @@ app.get("/api/statistics", async (req, res) => {
     const [completedThisMonth] = await pool.query(
       "SELECT COUNT(*) as count FROM event WHERE date < CURDATE() AND MONTH(date) = MONTH(CURDATE()) AND YEAR(date) = YEAR(CURDATE())"
     );
+
+    const responseData = {
+      activeEvents: activeEvents[0].count,
+      teamMembers: usersCount[0].count + contactsCount[0].count,
+      completedThisMonth: completedThisMonth[0].count,
+    };
+
+    console.log("[DATA] Data to be sent:", responseData);
+
     res.json({
       success: true,
-      data: {
-        activeEvents: activeEvents[0].count,
-        teamMembers: usersCount[0].count + contactsCount[0].count,
-        completedThisMonth: completedThisMonth[0].count,
-      },
+      data: responseData,
     });
   } catch (error) {
+    console.error("[DATA] Error fetching statistics:", error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch statistics",
@@ -64,7 +292,7 @@ app.get("/api/statistics", async (req, res) => {
   }
 });
 
-app.get("/api/events/upcoming", async (req, res) => {
+apiRouter.get("/events/upcoming", async (req, res) => {
   try {
     const [rows] = await pool.query(
       "SELECT idevent, project_name, date FROM event WHERE date >= CURDATE() ORDER BY date ASC LIMIT 5"
@@ -80,7 +308,7 @@ app.get("/api/events/upcoming", async (req, res) => {
 });
 
 // --- EVENTS ---
-app.get("/api/events", async (req, res) => {
+apiRouter.get("/events", async (req, res) => {
   try {
     const [rows] = await pool.query("SELECT * FROM event ORDER BY date DESC");
     res.json({ success: true, data: rows });
@@ -93,7 +321,7 @@ app.get("/api/events", async (req, res) => {
   }
 });
 
-app.get("/api/events/:id", async (req, res) => {
+apiRouter.get("/events/:id", async (req, res) => {
   const { id } = req.params;
   try {
     const [eventRows] = await pool.query(
@@ -131,7 +359,7 @@ app.get("/api/events/:id", async (req, res) => {
   }
 });
 
-app.post("/api/events", async (req, res) => {
+apiRouter.post("/events", async (req, res) => {
   const connection = await pool.getConnection();
   try {
     const {
@@ -185,12 +413,10 @@ app.post("/api/events", async (req, res) => {
       message: "Failed to create event",
       error: error.message,
     });
-  } finally {
-    connection.release();
   }
 });
 
-app.put("/api/events/:id", async (req, res) => {
+apiRouter.put("/events/:id", async (req, res) => {
   const eventId = req.params.id;
   const { participants = [], ...eventData } = req.body;
   const connection = await pool.getConnection();
@@ -252,12 +478,10 @@ app.put("/api/events/:id", async (req, res) => {
       message: "Failed to update event",
       error: error.message,
     });
-  } finally {
-    connection.release();
   }
 });
 
-app.delete("/api/events/:id", async (req, res) => {
+apiRouter.delete("/events/:id", async (req, res) => {
   const eventId = req.params.id;
   const connection = await pool.getConnection();
   try {
@@ -288,13 +512,11 @@ app.delete("/api/events/:id", async (req, res) => {
       message: "Failed to delete event",
       error: error.message,
     });
-  } finally {
-    connection.release();
   }
 });
 
 // --- EVENT CATEGORIES ---
-app.get("/api/event-categories", async (req, res) => {
+apiRouter.get("/event-categories", async (req, res) => {
   try {
     const [categories] = await pool.query(
       "SELECT * FROM category_event ORDER BY name"
@@ -309,9 +531,9 @@ app.get("/api/event-categories", async (req, res) => {
   }
 });
 
-app.post("/api/event-categories", async (req, res) => {
+apiRouter.post("/event-categories", async (req, res) => {
+  const { name } = req.body;
   try {
-    const { name } = req.body;
     const [result] = await pool.query(
       "INSERT INTO category_event (name) VALUES (?)",
       [name]
@@ -328,10 +550,10 @@ app.post("/api/event-categories", async (req, res) => {
   }
 });
 
-app.put("/api/event-categories/:id", async (req, res) => {
+apiRouter.put("/event-categories/:id", async (req, res) => {
+  const { id } = req.params;
+  const { name } = req.body;
   try {
-    const { id } = req.params;
-    const { name } = req.body;
     await pool.query(
       "UPDATE category_event SET name = ? WHERE idcategory_event = ?",
       [name, id]
@@ -346,9 +568,9 @@ app.put("/api/event-categories/:id", async (req, res) => {
   }
 });
 
-app.delete("/api/event-categories/:id", async (req, res) => {
+apiRouter.delete("/event-categories/:id", async (req, res) => {
+  const { id } = req.params;
   try {
-    const { id } = req.params;
     await pool.query("DELETE FROM category_event WHERE idcategory_event = ?", [
       id,
     ]);
@@ -362,167 +584,8 @@ app.delete("/api/event-categories/:id", async (req, res) => {
   }
 });
 
-// --- USERS ---
-app.get("/api/users", async (req, res) => {
-  try {
-    const [users] = await pool.query(
-      "SELECT id, telegram_id, username, first_name, last_name, role, created_at FROM user ORDER BY first_name, last_name"
-    );
-    res.json({ success: true, data: users });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch users",
-      error: error.message,
-    });
-  }
-});
-
-app.post("/api/users", async (req, res) => {
-  try {
-    const { telegram_id, username, first_name, last_name, role } = req.body;
-    const sql =
-      "INSERT INTO user (telegram_id, username, first_name, last_name, role) VALUES (?, ?, ?, ?, ?)";
-    const [result] = await pool.query(sql, [
-      telegram_id,
-      username,
-      first_name,
-      last_name,
-      role,
-    ]);
-    res
-      .status(201)
-      .json({ success: true, data: { id: result.insertId, ...req.body } });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to create user",
-      error: error.message,
-    });
-  }
-});
-
-app.put("/api/users/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { telegram_id, username, first_name, last_name, role } = req.body;
-    const sql =
-      "UPDATE user SET telegram_id = ?, username = ?, first_name = ?, last_name = ?, role = ? WHERE id = ?";
-    await pool.query(sql, [
-      telegram_id,
-      username,
-      first_name,
-      last_name,
-      role,
-      id,
-    ]);
-    res.json({ success: true, data: { id, ...req.body } });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to update user",
-      error: error.message,
-    });
-  }
-});
-
-app.delete("/api/users/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    await pool.query("DELETE FROM user WHERE id = ?", [id]);
-    res.json({ success: true, message: "User deleted" });
-  } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to delete user",
-        error: error.message,
-      });
-  }
-});
-
-// --- CONTACTS ---
-app.post("/api/contacts", async (req, res) => {
-  try {
-    const { name, specialty, phone, notes } = req.body;
-    const sql =
-      "INSERT INTO contact (name, specialty, phone, notes) VALUES (?, ?, ?, ?)";
-    const [result] = await pool.query(sql, [name, specialty, phone, notes]);
-    res
-      .status(201)
-      .json({ success: true, data: { id: result.insertId, ...req.body } });
-  } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to create contact",
-        error: error.message,
-      });
-  }
-});
-
-app.put("/api/contacts/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name, specialty, phone, notes } = req.body;
-    const sql =
-      "UPDATE contact SET name = ?, specialty = ?, phone = ?, notes = ? WHERE idcontact = ?";
-    await pool.query(sql, [name, specialty, phone, notes, id]);
-    res.json({ success: true, data: { id, ...req.body } });
-  } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to update contact",
-        error: error.message,
-      });
-  }
-});
-
-app.delete("/api/contacts/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    await pool.query("DELETE FROM contact WHERE idcontact = ?", [id]);
-    res.json({ success: true, message: "Contact deleted" });
-  } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to delete contact",
-        error: error.message,
-      });
-  }
-});
-
-// --- TEAM (Contacts + Users) ---
-app.get("/api/team-members", async (req, res) => {
-  try {
-    const [users] = await pool.query(
-      "SELECT id, CONCAT(first_name, ' ', last_name) as name, role, 'Сотрудник' as type FROM user"
-    );
-    const [contacts] = await pool.query(
-      "SELECT idcontact as id, name, specialty as role, 'Внешний специалист' as type, phone FROM contact"
-    );
-    const teamMembers = [
-      ...users.map((u) => ({ ...u, uniqueId: `user-${u.id}` })),
-      ...contacts.map((c) => ({ ...c, uniqueId: `contact-${c.id}` })),
-    ];
-    res.json({ success: true, data: teamMembers });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch team members",
-      error: error.message,
-    });
-  }
-});
-
 // --- VENUES ---
-app.get("/api/venues", async (req, res) => {
+apiRouter.get("/venues", async (req, res) => {
   try {
     const [rows] = await pool.query("SELECT * FROM venue ORDER BY name_venue");
     res.json({ success: true, data: rows });
@@ -535,9 +598,9 @@ app.get("/api/venues", async (req, res) => {
   }
 });
 
-app.post("/api/venues", async (req, res) => {
+apiRouter.post("/venues", async (req, res) => {
+  const { name_venue, address, contact_person, phone, notes } = req.body;
   try {
-    const { name_venue, address, contact_person, phone, notes } = req.body;
     const sql =
       "INSERT INTO venue (name_venue, address, contact_person, phone, notes) VALUES (?, ?, ?, ?, ?)";
     const [result] = await pool.query(sql, [
@@ -559,10 +622,10 @@ app.post("/api/venues", async (req, res) => {
   }
 });
 
-app.put("/api/venues/:id", async (req, res) => {
+apiRouter.put("/venues/:id", async (req, res) => {
+  const { id } = req.params;
+  const { name_venue, address, contact_person, phone, notes } = req.body;
   try {
-    const { id } = req.params;
-    const { name_venue, address, contact_person, phone, notes } = req.body;
     const sql =
       "UPDATE venue SET name_venue = ?, address = ?, contact_person = ?, phone = ?, notes = ? WHERE idvenue = ?";
     await pool.query(sql, [
@@ -583,9 +646,9 @@ app.put("/api/venues/:id", async (req, res) => {
   }
 });
 
-app.delete("/api/venues/:id", async (req, res) => {
+apiRouter.delete("/venues/:id", async (req, res) => {
+  const { id } = req.params;
   try {
-    const { id } = req.params;
     await pool.query("DELETE FROM venue WHERE idvenue = ?", [id]);
     res.json({ success: true, message: "Venue deleted" });
   } catch (error) {
@@ -598,7 +661,7 @@ app.delete("/api/venues/:id", async (req, res) => {
 });
 
 // --- CUSTOMERS ---
-app.get("/api/customers", async (req, res) => {
+apiRouter.get("/customers", async (req, res) => {
   try {
     const [rows] = await pool.query(
       "SELECT * FROM customer ORDER BY name_customer"
@@ -613,10 +676,10 @@ app.get("/api/customers", async (req, res) => {
   }
 });
 
-app.post("/api/customers", async (req, res) => {
+apiRouter.post("/customers", async (req, res) => {
+  const { name_customer, contact_person, phone, telegram_username, notes } =
+    req.body;
   try {
-    const { name_customer, contact_person, phone, telegram_username, notes } =
-      req.body;
     const sql =
       "INSERT INTO customer (name_customer, contact_person, phone, telegram_username, notes) VALUES (?, ?, ?, ?, ?)";
     const [result] = await pool.query(sql, [
@@ -638,11 +701,11 @@ app.post("/api/customers", async (req, res) => {
   }
 });
 
-app.put("/api/customers/:id", async (req, res) => {
+apiRouter.put("/customers/:id", async (req, res) => {
+  const { id } = req.params;
+  const { name_customer, contact_person, phone, telegram_username, notes } =
+    req.body;
   try {
-    const { id } = req.params;
-    const { name_customer, contact_person, phone, telegram_username, notes } =
-      req.body;
     const sql =
       "UPDATE customer SET name_customer = ?, contact_person = ?, phone = ?, telegram_username = ?, notes = ? WHERE idcustomer = ?";
     await pool.query(sql, [
@@ -663,9 +726,9 @@ app.put("/api/customers/:id", async (req, res) => {
   }
 });
 
-app.delete("/api/customers/:id", async (req, res) => {
+apiRouter.delete("/customers/:id", async (req, res) => {
+  const { id } = req.params;
   try {
-    const { id } = req.params;
     await pool.query("DELETE FROM customer WHERE idcustomer = ?", [id]);
     res.json({ success: true, message: "Customer deleted" });
   } catch (error) {
@@ -677,8 +740,143 @@ app.delete("/api/customers/:id", async (req, res) => {
   }
 });
 
+// --- USERS ---
+apiRouter.get("/users", authorizeRoles("admin"), async (req, res) => {
+  try {
+    const [users] = await pool.query(
+      "SELECT id, telegram_id, username, first_name, last_name, role, created_at FROM user ORDER BY first_name, last_name"
+    );
+    res.json({ success: true, data: users });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch users",
+      error: error.message,
+    });
+  }
+});
+
+apiRouter.post("/users", async (req, res) => {
+  const { username, password, first_name, last_name, roles } = req.body; // roles - массив ID ролей
+
+  if (
+    !username ||
+    !password ||
+    !first_name ||
+    !roles ||
+    !Array.isArray(roles) ||
+    roles.length === 0
+  ) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Missing required fields." });
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+    const [result] = await connection.query(
+      "INSERT INTO user (username, password, first_name, last_name) VALUES (?, ?, ?, ?)",
+      [username, hashedPassword, first_name, last_name]
+    );
+    const userId = result.insertId;
+
+    const userRolesData = roles.map((roleId) => [userId, roleId]);
+    await connection.query(
+      "INSERT INTO user_roles (user_id, role_id) VALUES ?",
+      [userRolesData]
+    );
+
+    await connection.commit();
+    res.status(201).json({
+      success: true,
+      message: "User created successfully",
+      data: { id: userId },
+    });
+  } catch (error) {
+    await connection.rollback();
+    if (error.code === "ER_DUP_ENTRY") {
+      return res
+        .status(409)
+        .json({ success: false, message: "Username already exists." });
+    }
+    res.status(500).json({
+      success: false,
+      message: "Failed to create user",
+      error: error.message,
+    });
+  } finally {
+    connection.release();
+  }
+});
+
+apiRouter.put("/users/:id", async (req, res) => {
+  const { id } = req.params;
+  const { telegram_id, username, first_name, last_name, role } = req.body;
+  const sql =
+    "UPDATE user SET telegram_id = ?, username = ?, first_name = ?, last_name = ?, role = ? WHERE id = ?";
+  await pool.query(sql, [
+    telegram_id,
+    username,
+    first_name,
+    last_name,
+    role,
+    id,
+  ]);
+  res.json({ success: true, data: { id, ...req.body } });
+});
+
+apiRouter.delete("/users/:id", async (req, res) => {
+  const { id } = req.params;
+  await pool.query("DELETE FROM user WHERE id = ?", [id]);
+  res.json({ success: true, message: "User deleted" });
+});
+
+// --- CONTACTS ---
+apiRouter.get("/contacts", async (req, res) => {
+  try {
+    const [rows] = await pool.query("SELECT * FROM contact");
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch contacts",
+      error: error.message,
+    });
+  }
+});
+
+apiRouter.post("/contacts", async (req, res) => {
+  const { name, specialty, phone, notes } = req.body;
+  const sql =
+    "INSERT INTO contact (name, specialty, phone, notes) VALUES (?, ?, ?, ?)";
+  const [result] = await pool.query(sql, [name, specialty, phone, notes]);
+  res
+    .status(201)
+    .json({ success: true, data: { id: result.insertId, ...req.body } });
+});
+
+apiRouter.put("/contacts/:id", async (req, res) => {
+  const { id } = req.params;
+  const { name, specialty, phone, notes } = req.body;
+  const sql =
+    "UPDATE contact SET name = ?, specialty = ?, phone = ?, notes = ? WHERE idcontact = ?";
+  await pool.query(sql, [name, specialty, phone, notes, id]);
+  res.json({ success: true, data: { id, ...req.body } });
+});
+
+apiRouter.delete("/contacts/:id", async (req, res) => {
+  const { id } = req.params;
+  await pool.query("DELETE FROM contact WHERE idcontact = ?", [id]);
+  res.json({ success: true, message: "Contact deleted" });
+});
+
 // --- CASHFLOW ---
-app.get("/api/cashflow", async (req, res) => {
+apiRouter.get("/cashflow", async (req, res) => {
+  const { eventId } = req.query;
   try {
     const [rows] = await pool.query(`
       SELECT cf.*, e.project_name, acc.name as account_name, cat.name as category_name
@@ -698,94 +896,70 @@ app.get("/api/cashflow", async (req, res) => {
   }
 });
 
-app.post("/api/cashflow", async (req, res) => {
-  try {
-    const {
-      date,
-      transaction,
-      account_cashflow_idaccount_cashflow,
-      category_cashflow_idcategory_cashflow,
-      event_idevent,
-      note,
-      income,
-      expense,
-    } = req.body;
-    const sql =
-      "INSERT INTO cashflow (date, transaction, account_cashflow_idaccount_cashflow, category_cashflow_idcategory_cashflow, event_idevent, note, income, expense) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-    const [result] = await pool.query(sql, [
-      date,
-      transaction,
-      account_cashflow_idaccount_cashflow,
-      category_cashflow_idcategory_cashflow,
-      event_idevent,
-      note,
-      income || 0,
-      expense || 0,
-    ]);
-    res
-      .status(201)
-      .json({ success: true, data: { id: result.insertId, ...req.body } });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to create cashflow transaction",
-      error: error.message,
-    });
-  }
+apiRouter.post("/cashflow", async (req, res) => {
+  const {
+    date,
+    transaction,
+    account_cashflow_idaccount_cashflow,
+    category_cashflow_idcategory_cashflow,
+    event_idevent,
+    note,
+    income,
+    expense,
+  } = req.body;
+  const sql =
+    "INSERT INTO cashflow (date, transaction, account_cashflow_idaccount_cashflow, category_cashflow_idcategory_cashflow, event_idevent, note, income, expense) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+  const [result] = await pool.query(sql, [
+    date,
+    transaction,
+    account_cashflow_idaccount_cashflow,
+    category_cashflow_idcategory_cashflow,
+    event_idevent,
+    note,
+    income || 0,
+    expense || 0,
+  ]);
+  res
+    .status(201)
+    .json({ success: true, data: { id: result.insertId, ...req.body } });
 });
 
-app.put("/api/cashflow/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const {
-      date,
-      transaction,
-      account_cashflow_idaccount_cashflow,
-      category_cashflow_idcategory_cashflow,
-      event_idevent,
-      note,
-      income,
-      expense,
-    } = req.body;
-    const sql =
-      "UPDATE cashflow SET date = ?, transaction = ?, account_cashflow_idaccount_cashflow = ?, category_cashflow_idcategory_cashflow = ?, event_idevent = ?, note = ?, income = ?, expense = ? WHERE idcashflow = ?";
-    await pool.query(sql, [
-      date,
-      transaction,
-      account_cashflow_idaccount_cashflow,
-      category_cashflow_idcategory_cashflow,
-      event_idevent,
-      note,
-      income,
-      expense,
-      id,
-    ]);
-    res.json({ success: true, data: { id, ...req.body } });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to update cashflow record",
-      error: error.message,
-    });
-  }
+apiRouter.put("/cashflow/:id", async (req, res) => {
+  const { id } = req.params;
+  const {
+    date,
+    transaction,
+    account_cashflow_idaccount_cashflow,
+    category_cashflow_idcategory_cashflow,
+    event_idevent,
+    note,
+    income,
+    expense,
+  } = req.body;
+  const sql =
+    "UPDATE cashflow SET date = ?, transaction = ?, account_cashflow_idaccount_cashflow = ?, category_cashflow_idcategory_cashflow = ?, event_idevent = ?, note = ?, income = ?, expense = ? WHERE idcashflow = ?";
+  await pool.query(sql, [
+    date,
+    transaction,
+    account_cashflow_idaccount_cashflow,
+    category_cashflow_idcategory_cashflow,
+    event_idevent,
+    note,
+    income,
+    expense,
+    id,
+  ]);
+  res.json({ success: true, data: { id, ...req.body } });
 });
 
-app.delete("/api/cashflow/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    await pool.query("DELETE FROM cashflow WHERE idcashflow = ?", [id]);
-    res.json({ success: true, message: "Cashflow record deleted" });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to delete cashflow record",
-      error: error.message,
-    });
-  }
+apiRouter.delete("/cashflow/:id", async (req, res) => {
+  const { id } = req.params;
+  await pool.query("DELETE FROM cashflow WHERE idcashflow = ?", [id]);
+  res.json({ success: true, message: "Cashflow record deleted" });
 });
 
 // --- CASHFLOW ACCOUNTS ---
-app.get("/api/cashflow/accounts", async (req, res) => {
+apiRouter.get("/cashflow-accounts", async (req, res) => {
   try {
     const [rows] = await pool.query(
       "SELECT * FROM account_cashflow ORDER BY name"
@@ -800,62 +974,36 @@ app.get("/api/cashflow/accounts", async (req, res) => {
   }
 });
 
-app.post("/api/cashflow/accounts", async (req, res) => {
-  try {
-    const { name } = req.body;
-    const [result] = await pool.query(
-      "INSERT INTO account_cashflow (name) VALUES (?)",
-      [name]
-    );
-    res
-      .status(201)
-      .json({ success: true, data: { id: result.insertId, name } });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to create account",
-      error: error.message,
-    });
-  }
+apiRouter.post("/cashflow-accounts", async (req, res) => {
+  const { name } = req.body;
+  const [result] = await pool.query(
+    "INSERT INTO account_cashflow (name) VALUES (?)",
+    [name]
+  );
+  res.status(201).json({ success: true, data: { id: result.insertId, name } });
 });
 
-app.put("/api/cashflow/accounts/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name } = req.body;
-    await pool.query(
-      "UPDATE account_cashflow SET name = ? WHERE idaccount_cashflow = ?",
-      [name, id]
-    );
-    res.json({ success: true, data: { id, name } });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to update account",
-      error: error.message,
-    });
-  }
+apiRouter.put("/cashflow-accounts/:id", async (req, res) => {
+  const { id } = req.params;
+  const { name } = req.body;
+  await pool.query(
+    "UPDATE account_cashflow SET name = ? WHERE idaccount_cashflow = ?",
+    [name, id]
+  );
+  res.json({ success: true, data: { id, name } });
 });
 
-app.delete("/api/cashflow/accounts/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    await pool.query(
-      "DELETE FROM account_cashflow WHERE idaccount_cashflow = ?",
-      [id]
-    );
-    res.json({ success: true, message: "Account deleted" });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to delete account",
-      error: error.message,
-    });
-  }
+apiRouter.delete("/cashflow-accounts/:id", async (req, res) => {
+  const { id } = req.params;
+  await pool.query(
+    "DELETE FROM account_cashflow WHERE idaccount_cashflow = ?",
+    [id]
+  );
+  res.json({ success: true, message: "Account deleted" });
 });
 
 // --- CASHFLOW CATEGORIES ---
-app.get("/api/cashflow-categories", async (req, res) => {
+apiRouter.get("/cashflow-categories", async (req, res) => {
   try {
     const [rows] = await pool.query(
       "SELECT * FROM category_cashflow ORDER BY name"
@@ -870,183 +1018,140 @@ app.get("/api/cashflow-categories", async (req, res) => {
   }
 });
 
-app.post("/api/cashflow-categories", async (req, res) => {
-  try {
-    const { name } = req.body;
-    const [result] = await pool.query(
-      "INSERT INTO category_cashflow (name) VALUES (?)",
-      [name]
-    );
-    res
-      .status(201)
-      .json({ success: true, data: { id: result.insertId, name } });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to create cashflow category",
-      error: error.message,
-    });
-  }
+apiRouter.post("/cashflow-categories", async (req, res) => {
+  const { name } = req.body;
+  const [result] = await pool.query(
+    "INSERT INTO category_cashflow (name) VALUES (?)",
+    [name]
+  );
+  res.status(201).json({ success: true, data: { id: result.insertId, name } });
 });
 
-app.put("/api/cashflow-categories/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name } = req.body;
-    await pool.query(
-      "UPDATE category_cashflow SET name = ? WHERE idcategory_cashflow = ?",
-      [name, id]
-    );
-    res.json({ success: true, data: { id, name } });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to update cashflow category",
-      error: error.message,
-    });
-  }
+apiRouter.put("/cashflow-categories/:id", async (req, res) => {
+  const { id } = req.params;
+  const { name } = req.body;
+  await pool.query(
+    "UPDATE category_cashflow SET name = ? WHERE idcategory_cashflow = ?",
+    [name, id]
+  );
+  res.json({ success: true, data: { id, name } });
 });
 
-app.delete("/api/cashflow-categories/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    await pool.query(
-      "DELETE FROM category_cashflow WHERE idcategory_cashflow = ?",
-      [id]
-    );
-    res.json({ success: true, message: "Cashflow category deleted" });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to delete cashflow category",
-      error: error.message,
-    });
-  }
+apiRouter.delete("/cashflow-categories/:id", async (req, res) => {
+  const { id } = req.params;
+  await pool.query(
+    "DELETE FROM category_cashflow WHERE idcategory_cashflow = ?",
+    [id]
+  );
+  res.json({ success: true, message: "Cashflow category deleted" });
 });
 
 // --- TASKS ---
-app.get("/api/events/:eventId/tasks", async (req, res) => {
+apiRouter.get("/events/:eventId/tasks", async (req, res) => {
+  const { eventId } = req.params;
+  const [tasks] = await pool.query(
+    "SELECT * FROM task WHERE event_idevent = ? ORDER BY created_at DESC",
+    [eventId]
+  );
+  res.json({ success: true, data: tasks });
+});
+
+apiRouter.post("/tasks", async (req, res) => {
+  const { event_idevent, title, description, priority, due_date } = req.body;
   try {
-    const { eventId } = req.params;
-    const [tasks] = await pool.query(
-      "SELECT * FROM task WHERE event_idevent = ? ORDER BY created_at DESC",
-      [eventId]
+    const [result] = await pool.query(
+      "INSERT INTO task (event_idevent, title, description, priority, due_date) VALUES (?, ?, ?, ?, ?)",
+      [event_idevent, title, description, priority, due_date || null]
     );
-    res.json({ success: true, data: tasks });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch tasks",
-      error: error.message,
-    });
-  }
-});
-
-app.post("/api/tasks", async (req, res) => {
-  try {
-    const { event_idevent, title, description, priority, due_date } = req.body;
-    const sql =
-      "INSERT INTO task (event_idevent, title, description, priority, due_date) VALUES (?, ?, ?, ?, ?)";
-    const [result] = await pool.query(sql, [
-      event_idevent,
-      title,
-      description,
-      priority,
-      due_date || null,
+    const insertId = result.insertId;
+    const [rows] = await pool.query("SELECT * FROM task WHERE idtask = ?", [
+      insertId,
     ]);
-    res.status(201).json({
-      success: true,
-      data: { id: result.insertId, ...req.body, completed: 0 },
-    });
+    res.json({ success: true, data: rows[0] });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to create task",
-      error: error.message,
-    });
+    console.error("Error creating task:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-app.put("/api/tasks/:taskId", async (req, res) => {
+apiRouter.put("/tasks/:taskId", async (req, res) => {
+  const { taskId } = req.params;
+  const taskData = req.body;
+
   try {
-    const { taskId } = req.params;
-    const { title, description, priority, due_date, completed } = req.body;
-    const sql =
-      "UPDATE task SET title = ?, description = ?, priority = ?, due_date = ?, completed = ? WHERE idtask = ?";
-    await pool.query(sql, [
-      title,
-      description,
-      priority,
-      due_date || null,
-      completed,
+    // Безопасно удаляем поля, которые не нужно обновлять напрямую
+    delete taskData.idtask;
+    delete taskData.event_idevent;
+    delete taskData.created_at;
+
+    // Преобразуем 'completed' в число, если поле существует
+    if (taskData.hasOwnProperty("completed")) {
+      taskData.completed = taskData.completed ? 1 : 0;
+    }
+
+    const fields = Object.keys(taskData)
+      .map((key) => `${key} = ?`)
+      .join(", ");
+    const values = Object.values(taskData);
+
+    if (fields.length === 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: "No fields to update" });
+    }
+
+    const sql = `UPDATE task SET ${fields} WHERE idtask = ?`;
+    values.push(taskId);
+
+    await pool.query(sql, values);
+
+    const [rows] = await pool.query("SELECT * FROM task WHERE idtask = ?", [
       taskId,
     ]);
-    res.json({ success: true, data: { id: taskId, ...req.body } });
+    res.json({ success: true, data: rows[0] });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to update task",
-      error: error.message,
-    });
+    console.error(`Error updating task ${taskId}:`, error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-app.delete("/api/tasks/:taskId", async (req, res) => {
+apiRouter.delete("/tasks/:taskId", async (req, res) => {
+  const { taskId } = req.params;
   try {
-    const { taskId } = req.params;
     await pool.query("DELETE FROM task WHERE idtask = ?", [taskId]);
     res.json({ success: true, message: "Task deleted successfully" });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to delete task",
-      error: error.message,
-    });
+    console.error("Error deleting task:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
 // --- DOCUMENTS & TEMPLATES ---
-app.get("/api/documents", async (req, res) => {
-  try {
-    const sql = `
-      SELECT d.*, e.project_name, dt.name as template_name
-      FROM document d
-      JOIN event e ON d.event_idevent = e.idevent
-      LEFT JOIN document_template dt ON d.document_template_id = dt.id
-      ORDER BY d.date DESC
-    `;
-    const [documents] = await pool.query(sql);
-    res.json({ success: true, data: documents });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch documents",
-      error: error.message,
-    });
-  }
+apiRouter.get("/documents", async (req, res) => {
+  const sql = `
+    SELECT d.*, e.project_name, dt.name as template_name
+    FROM document d
+    JOIN event e ON d.event_idevent = e.idevent
+    LEFT JOIN document_template dt ON d.document_template_id = dt.id
+    ORDER BY d.date DESC
+  `;
+  const [documents] = await pool.query(sql);
+  res.json({ success: true, data: documents });
 });
 
-app.get("/api/events/:eventId/documents", async (req, res) => {
-  try {
-    const { eventId } = req.params;
-    const sql = `
-      SELECT d.iddocument, d.name, d.document_number, d.date, d.type
-      FROM document d
-      WHERE d.event_idevent = ?
-      ORDER BY d.date DESC
-    `;
-    const [documents] = await pool.query(sql, [eventId]);
-    res.json({ success: true, data: documents });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch documents for event",
-      error: error.message,
-    });
-  }
+apiRouter.get("/events/:eventId/documents", async (req, res) => {
+  const { eventId } = req.params;
+  const sql = `
+    SELECT d.iddocument, d.name, d.document_number, d.date, d.type
+    FROM document d
+    WHERE d.event_idevent = ?
+    ORDER BY d.date DESC
+  `;
+  const [documents] = await pool.query(sql, [eventId]);
+  res.json({ success: true, data: documents });
 });
 
-app.post("/api/documents/generate", async (req, res) => {
+apiRouter.post("/documents/generate", async (req, res) => {
   const { eventId, templateId } = req.body;
   if (!eventId || !templateId) {
     return res.status(400).json({
@@ -1169,7 +1274,7 @@ app.post("/api/documents/generate", async (req, res) => {
   }
 });
 
-app.get("/api/documents/:id/download", async (req, res) => {
+apiRouter.get("/documents/:id/download", async (req, res) => {
   const { id } = req.params;
   try {
     const [docRows] = await pool.query(
@@ -1263,97 +1368,411 @@ app.get("/api/documents/:id/download", async (req, res) => {
   }
 });
 
-app.get("/api/document-templates", async (req, res) => {
-  try {
-    const [templates] = await pool.query(
-      "SELECT id, name, type, prefix FROM document_template ORDER BY name"
-    );
-    res.json({ success: true, data: templates });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch document templates",
-      error: error.message,
-    });
+apiRouter.get("/document-templates", async (req, res) => {
+  const [templates] = await pool.query(
+    "SELECT id, name, type, prefix FROM document_template ORDER BY name"
+  );
+  res.json({ success: true, data: templates });
+});
+
+apiRouter.get("/document-templates/:id", async (req, res) => {
+  const { id } = req.params;
+  const [template] = await pool.query(
+    "SELECT * FROM document_template WHERE id = ?",
+    [id]
+  );
+  if (template.length > 0) {
+    res.json({ success: true, data: template[0] });
+  } else {
+    res.status(404).json({ success: false, message: "Template not found" });
   }
 });
 
-app.get("/api/document-templates/:id", async (req, res) => {
+apiRouter.post("/document-templates", async (req, res) => {
+  const { name, type, prefix, content } = req.body;
+  const sql =
+    "INSERT INTO document_template (name, type, prefix, content) VALUES (?, ?, ?, ?)";
+  const [result] = await pool.query(sql, [name, type, prefix || null, content]);
+  res
+    .status(201)
+    .json({ success: true, data: { id: result.insertId, ...req.body } });
+});
+
+apiRouter.put("/document-templates/:id", async (req, res) => {
+  const { id } = req.params;
+  const { name, type, prefix, content } = req.body;
+  const sql =
+    "UPDATE document_template SET name = ?, type = ?, prefix = ?, content = ? WHERE id = ?";
+  await pool.query(sql, [name, type, prefix || null, content, id]);
+  res.json({ success: true, data: { id, ...req.body } });
+});
+
+apiRouter.delete("/document-templates/:id", async (req, res) => {
+  const { id } = req.params;
+  await pool.query("DELETE FROM document_template WHERE id = ?", [id]);
+  res.json({ success: true, message: "Document template deleted" });
+});
+
+// --- DOCUMENTS ---
+apiRouter.get("/events/:eventId/documents", async (req, res) => {
+  const { eventId } = req.params;
+  const sql = `
+    SELECT d.iddocument, d.name, d.document_number, d.date, d.type
+    FROM document d
+    WHERE d.event_idevent = ?
+    ORDER BY d.date DESC
+  `;
+  const [documents] = await pool.query(sql, [eventId]);
+  res.json({ success: true, data: documents });
+});
+
+apiRouter.post("/documents/generate", async (req, res) => {
+  const { event_idevent, document_template_id } = req.body;
+  const connection = await pool.getConnection();
   try {
-    const { id } = req.params;
-    const [template] = await pool.query(
+    await connection.beginTransaction();
+
+    const [eventRows] = await connection.query(
+      `SELECT e.*, c.name_customer, c.contact_person, c.phone as customer_phone, v.name_venue, v.address as venue_address
+       FROM event e
+       JOIN customer c ON e.customer_idcustomer = c.idcustomer
+       JOIN venue v ON e.venue_idvenue = v.idvenue
+       WHERE e.idevent = ?`,
+      [event_idevent]
+    );
+    if (eventRows.length === 0) throw new Error("Мероприятие не найдено");
+    const eventData = eventRows[0];
+
+    const [templateRows] = await connection.query(
       "SELECT * FROM document_template WHERE id = ?",
+      [document_template_id]
+    );
+    if (templateRows.length === 0) throw new Error("Шаблон не найден");
+    const template = templateRows[0];
+
+    const [companyRows] = await connection.query(
+      "SELECT * FROM company_details WHERE is_active = 1 LIMIT 1"
+    );
+    if (companyRows.length === 0)
+      throw new Error("Реквизиты компании не найдены");
+    const company = companyRows[0];
+
+    const docName = template.name
+      .replace(/{{eventName}}/g, eventData.project_name || "...")
+      .trim();
+    const docDate = new Date();
+    const docType = template.type;
+
+    const [insertResult] = await connection.query(
+      `INSERT INTO document (event_idevent, name, document_number, date, type, document_template_id) VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        event_idevent,
+        docName,
+        "...creating...",
+        docDate,
+        docType,
+        document_template_id,
+      ]
+    );
+    const newDocId = insertResult.insertId;
+    const docNumber = `${template.prefix || "DOC"}-${newDocId}`;
+
+    await connection.query(
+      `UPDATE document SET document_number = ? WHERE iddocument = ?`,
+      [docNumber, newDocId]
+    );
+    await connection.commit();
+
+    let html = template.content;
+    const formatDate = (dateStr) =>
+      dateStr ? new Date(dateStr).toLocaleDateString("ru-RU") : "не указана";
+    const fill = (value, placeholder = "_".repeat(20)) => value || placeholder;
+
+    const replacements = {
+      documentNumber: fill(docNumber, "б/н"),
+      documentDate: formatDate(docDate),
+      customerName: fill(eventData.name_customer),
+      customerContactPerson: fill(eventData.contact_person),
+      customerPhone: fill(eventData.customer_phone),
+      customerAddress: fill(null),
+      customerPassport: fill(null),
+      eventName: fill(eventData.project_name),
+      eventDate: formatDate(eventData.date),
+      eventVenue: fill(`${eventData.name_venue} (${eventData.venue_address})`),
+      eventCost: eventData.cost
+        ? String(eventData.cost).replace(/\.00$/, "")
+        : "0",
+      prepaymentAmount: eventData.cost
+        ? String(eventData.cost / 2).replace(/\.00$/, "")
+        : "0",
+      executorName: fill(company.name),
+      executorLegalBasis: fill(company.legal_basis),
+      executorAddress: fill(company.address),
+      executorInn: fill(company.inn),
+      executorPhone: fill(company.phone),
+      executorBankName: fill(company.bank_name),
+      executorCheckingAccount: fill(company.checking_account),
+      executorCorrespondentAccount: fill(company.correspondent_account),
+      executorBic: fill(company.bic),
+    };
+
+    for (const key in replacements) {
+      html = html.replace(new RegExp(`{{${key}}}`, "g"), replacements[key]);
+    }
+
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ["--no-sandbox"],
+    });
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0" });
+    const pdfBuffer = await page.pdf({ format: "A4", printBackground: true });
+    await browser.close();
+
+    const safeFilename = `${docNumber}.pdf`.replace(/[^a-zA-Z0-9-._]/g, "_");
+
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="${safeFilename}"`,
+      "Content-Length": pdfBuffer.length,
+    });
+    res.send(pdfBuffer);
+  } catch (error) {
+    await connection.rollback();
+    res.status(500).json({
+      success: false,
+      message: "Failed to generate document",
+      error: error.message,
+    });
+  } finally {
+    connection.release();
+  }
+});
+
+apiRouter.get("/documents/:id/download", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [docRows] = await pool.query(
+      `SELECT d.*, e.project_name, e.date as event_date, e.cost, c.name_customer, c.contact_person, c.phone as customer_phone, v.name_venue, v.address as venue_address
+       FROM document d
+       JOIN event e ON d.event_idevent = e.idevent
+       JOIN customer c ON e.customer_idcustomer = c.idcustomer
+       JOIN venue v ON e.venue_idvenue = v.idvenue
+       WHERE d.iddocument = ?`,
       [id]
     );
-    if (template.length > 0) {
-      res.json({ success: true, data: template[0] });
-    } else {
-      res.status(404).json({ success: false, message: "Template not found" });
+
+    if (docRows.length === 0) return res.status(404).send("Document not found");
+    const doc = docRows[0];
+
+    const [companyRows] = await pool.query(
+      "SELECT * FROM company_details WHERE is_active = 1 LIMIT 1"
+    );
+    if (companyRows.length === 0)
+      return res.status(404).send("Company details not found");
+    const company = companyRows[0];
+
+    if (!doc.document_template_id)
+      return res.status(400).send("The document is not linked to a template.");
+
+    const [templateRows] = await pool.query(
+      "SELECT content FROM document_template WHERE id = ?",
+      [doc.document_template_id]
+    );
+    if (templateRows.length === 0)
+      return res.status(404).send("Document template not found");
+    let html = templateRows[0].content;
+
+    const formatDate = (dateStr) =>
+      dateStr ? new Date(dateStr).toLocaleDateString("ru-RU") : "не указана";
+    const fill = (value, placeholder = "_".repeat(20)) => value || placeholder;
+
+    const replacements = {
+      documentNumber: fill(doc.document_number, "б/н"),
+      documentDate: formatDate(doc.date),
+      customerName: fill(doc.name_customer),
+      customerContactPerson: fill(doc.contact_person),
+      customerPhone: fill(doc.customer_phone),
+      customerAddress: fill(null),
+      customerPassport: fill(null),
+      eventName: fill(doc.project_name),
+      eventDate: formatDate(doc.event_date),
+      eventVenue: fill(`${doc.name_venue} (${doc.venue_address})`),
+      eventCost: doc.cost ? String(doc.cost).replace(/\.00$/, "") : "0",
+      prepaymentAmount: doc.cost
+        ? String(doc.cost / 2).replace(/\.00$/, "")
+        : "0",
+      executorName: fill(company.name),
+      executorLegalBasis: fill(company.legal_basis),
+      executorAddress: fill(company.address),
+      executorInn: fill(company.inn),
+      executorPhone: fill(company.phone),
+      executorBankName: fill(company.bank_name),
+      executorCheckingAccount: fill(company.checking_account),
+      executorCorrespondentAccount: fill(company.correspondent_account),
+      executorBic: fill(company.bic),
+    };
+
+    for (const key in replacements) {
+      html = html.replace(new RegExp(`{{${key}}}`, "g"), replacements[key]);
     }
+
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ["--no-sandbox"],
+    });
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0" });
+    const pdfBuffer = await page.pdf({ format: "A4", printBackground: true });
+    await browser.close();
+
+    const safeDocNumber = (doc.document_number || String(id)).replace(
+      /[^a-zA-Z0-9-]/g,
+      "_"
+    );
+    const safeFilename = `doc_${safeDocNumber}.pdf`;
+
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename="${safeFilename}"`,
+      "Content-Length": pdfBuffer.length,
+    });
+    res.send(pdfBuffer);
+  } catch (error) {
+    res.status(500).send("Error generating PDF: " + error.message);
+  }
+});
+
+apiRouter.delete("/documents/:id", async (req, res) => {
+  const { id } = req.params;
+  await pool.query("DELETE FROM document WHERE iddocument = ?", [id]);
+  res.json({ success: true, message: "Document deleted" });
+});
+
+// --- COMPANY DETAILS ---
+apiRouter.get("/company-details", async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      "SELECT * FROM company_details WHERE is_active = 1"
+    );
+    res.json({ success: true, data: rows });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Failed to fetch single document template",
+      message: "Failed to fetch company details",
       error: error.message,
     });
   }
 });
 
-app.post("/api/document-templates", async (req, res) => {
-  try {
-    const { name, type, prefix, content } = req.body;
-    const sql =
-      "INSERT INTO document_template (name, type, prefix, content) VALUES (?, ?, ?, ?)";
-    const [result] = await pool.query(sql, [
-      name,
-      type,
-      prefix || null,
-      content,
-    ]);
-    res
-      .status(201)
-      .json({ success: true, data: { id: result.insertId, ...req.body } });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to create document template",
-      error: error.message,
-    });
-  }
+apiRouter.post("/company-details", async (req, res) => {
+  const {
+    name,
+    legal_basis,
+    inn,
+    address,
+    phone,
+    bank_name,
+    checking_account,
+    correspondent_account,
+    bic,
+  } = req.body;
+  const sql =
+    "INSERT INTO company_details (name, legal_basis, inn, address, phone, bank_name, checking_account, correspondent_account, bic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+  const [result] = await pool.query(sql, [
+    name,
+    legal_basis,
+    inn,
+    address,
+    phone,
+    bank_name,
+    checking_account,
+    correspondent_account,
+    bic,
+  ]);
+  res
+    .status(201)
+    .json({ success: true, data: { id: result.insertId, ...req.body } });
 });
 
-app.put("/api/document-templates/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name, type, prefix, content } = req.body;
-    const sql =
-      "UPDATE document_template SET name = ?, type = ?, prefix = ?, content = ? WHERE id = ?";
-    await pool.query(sql, [name, type, prefix || null, content, id]);
-    res.json({ success: true, data: { id, ...req.body } });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to update document template",
-      error: error.message,
-    });
-  }
+apiRouter.put("/company-details/:id", async (req, res) => {
+  const { id } = req.params;
+  const {
+    name,
+    legal_basis,
+    inn,
+    address,
+    phone,
+    bank_name,
+    checking_account,
+    correspondent_account,
+    bic,
+  } = req.body;
+  const sql =
+    "UPDATE company_details SET name = ?, legal_basis = ?, inn = ?, address = ?, phone = ?, bank_name = ?, checking_account = ?, correspondent_account = ?, bic = ? WHERE idcompany_details = ?";
+  await pool.query(sql, [
+    name,
+    legal_basis,
+    inn,
+    address,
+    phone,
+    bank_name,
+    checking_account,
+    correspondent_account,
+    bic,
+    id,
+  ]);
+  res.json({ success: true, data: { id, ...req.body } });
 });
 
-app.delete("/api/document-templates/:id", async (req, res) => {
+apiRouter.delete("/company-details/:id", async (req, res) => {
+  const { id } = req.params;
+  await pool.query("DELETE FROM company_details WHERE idcompany_details = ?", [
+    id,
+  ]);
+  res.json({ success: true, message: "Company details deleted" });
+});
+
+// --- PARTICIPANTS ---
+apiRouter.get("/participants", async (req, res) => {
   try {
-    const { id } = req.params;
-    await pool.query("DELETE FROM document_template WHERE id = ?", [id]);
-    res.json({ success: true, message: "Document template deleted" });
+    // Выбираем активных пользователей (сотрудников)
+    const [users] = await pool.query(`
+      SELECT 
+        u.id, 
+        CONCAT(u.first_name, ' ', u.last_name) AS name, 
+        (SELECT r.name FROM roles r JOIN user_roles ur ON r.id = ur.role_id WHERE ur.user_id = u.id LIMIT 1) AS specialty,
+        'Сотрудник' AS type, 
+        CONCAT('user-', u.id) AS uniqueId 
+      FROM 
+        user u
+    `);
+
+    // Выбираем все внешние контакты
+    const [contacts] = await pool.query(`
+      SELECT 
+        idcontact as id, 
+        name, 
+        specialty, 
+        'Контакт' as type, 
+        CONCAT('contact-', idcontact) as uniqueId 
+      FROM contact
+    `);
+
+    // Объединяем два массива в один
+    const combined = [...users, ...contacts];
+
+    // Отправляем унифицированный список
+    res.json({ success: true, data: combined });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to delete document template",
-      error: error.message,
-    });
+    console.error("Failed to get participants:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
 // --- START SERVER ---
+app.use("/api", apiRouter);
+
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });

@@ -138,6 +138,7 @@
 <script setup>
 import { ref, onMounted, computed, watch } from "vue";
 import apiService from "@/services/api.service";
+import { useAuthStore } from "@/store/auth.store";
 import NProgress from "nprogress";
 import usePagination from "@/composables/usePagination";
 
@@ -147,6 +148,7 @@ const isModalOpen = ref(false);
 const isEditMode = ref(false);
 const currentCategory = ref({});
 const searchQuery = ref("");
+const authStore = useAuthStore();
 
 const defaultCategory = { name: "" };
 
@@ -155,8 +157,8 @@ async function loadCategories() {
   NProgress.start();
   try {
     const response = await apiService.getEventCategories();
-    if (response.success) {
-      categories.value = response.data;
+    if (response.data.success) {
+      categories.value = response.data.data;
     }
   } catch (error) {
     console.error("Failed to load event categories:", error);
@@ -166,7 +168,9 @@ async function loadCategories() {
   }
 }
 
-onMounted(loadCategories);
+onMounted(() => {
+  loadCategories();
+});
 
 const filteredItems = computed(() => {
   if (!searchQuery.value) {
@@ -207,21 +211,28 @@ function closeModal() {
 async function saveCategory() {
   NProgress.start();
   try {
+    let response;
     if (isEditMode.value) {
-      await apiService.updateEventCategory(
+      response = await apiService.updateEventCategory(
         currentCategory.value.idcategory_event,
         { name: currentCategory.value.name }
       );
     } else {
-      await apiService.createEventCategory({
+      response = await apiService.createEventCategory({
         name: currentCategory.value.name,
       });
     }
-    await loadCategories();
-    closeModal();
+    if (response.data.success) {
+      await loadCategories();
+      closeModal();
+    } else {
+      throw new Error(
+        response.data.message || "Не удалось сохранить категорию"
+      );
+    }
   } catch (error) {
     console.error("Failed to save category:", error);
-    alert("Ошибка сохранения категории.");
+    alert(`Ошибка сохранения категории: ${error.message}`);
   } finally {
     NProgress.done();
   }
@@ -235,8 +246,16 @@ async function confirmDeleteItem(categoryToDelete) {
   ) {
     NProgress.start();
     try {
-      await apiService.deleteEventCategory(categoryToDelete.idcategory_event);
-      await loadCategories();
+      const response = await apiService.deleteEventCategory(
+        categoryToDelete.idcategory_event
+      );
+      if (response.data.success) {
+        await loadCategories();
+      } else {
+        throw new Error(
+          response.data.message || "Не удалось удалить категорию"
+        );
+      }
     } catch (error) {
       console.error("Failed to delete category:", error);
       alert(
