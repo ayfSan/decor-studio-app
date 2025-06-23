@@ -743,9 +743,29 @@ apiRouter.delete("/customers/:id", async (req, res) => {
 // --- USERS ---
 apiRouter.get("/users", authorizeRoles("admin"), async (req, res) => {
   try {
-    const [users] = await pool.query(
-      "SELECT id, telegram_id, username, first_name, last_name, role, created_at FROM user ORDER BY first_name, last_name"
-    );
+    const [users] = await pool.query(`
+      SELECT
+        u.id,
+        u.username,
+        u.first_name,
+        u.last_name,
+        u.created_at,
+        u.telegram_chat_id AS telegram_id,
+        CASE r.name
+            WHEN 'admin' THEN 'Администратор'
+            WHEN 'manager' THEN 'Менеджер'
+            WHEN 'user' THEN 'Сотрудник'
+            ELSE 'Не указана'
+        END AS role
+      FROM
+        user u
+      LEFT JOIN
+        user_roles ur ON u.id = ur.user_id
+      LEFT JOIN
+        roles r ON ur.role_id = r.id
+      ORDER BY
+        u.first_name, u.last_name
+    `);
     res.json({ success: true, data: users });
   } catch (error) {
     res.status(500).json({
@@ -757,52 +777,62 @@ apiRouter.get("/users", authorizeRoles("admin"), async (req, res) => {
 });
 
 apiRouter.post("/users", async (req, res) => {
-  const { username, password, first_name, last_name, roles } = req.body; // roles - массив ID ролей
-
-  if (
-    !username ||
-    !password ||
-    !first_name ||
-    !roles ||
-    !Array.isArray(roles) ||
-    roles.length === 0
-  ) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Missing required fields." });
-  }
-
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
 
-    const hashedPassword = await bcrypt.hash(password, saltRounds);
+    const { telegram_id, username, first_name, last_name, role } = req.body;
+    // The user table requires a password. Since it's not provided in the form,
+    // we'll use a placeholder. Consider updating the form to include a password field.
+    const tempPassword =
+      Math.random().toString(36).slice(-8) +
+      Math.random().toString(36).slice(-8);
+    const hashedPassword = await bcrypt.hash(tempPassword, saltRounds);
 
-    const [result] = await connection.query(
-      "INSERT INTO user (username, password, first_name, last_name) VALUES (?, ?, ?, ?)",
-      [username, hashedPassword, first_name, last_name]
-    );
-    const userId = result.insertId;
+    const userSql =
+      "INSERT INTO user (username, first_name, last_name, telegram_chat_id, password) VALUES (?, ?, ?, ?, ?)";
+    const [userResult] = await connection.query(userSql, [
+      username,
+      first_name,
+      last_name,
+      telegram_id,
+      hashedPassword,
+    ]);
+    const newUserId = userResult.insertId;
 
-    const userRolesData = roles.map((roleId) => [userId, roleId]);
-    await connection.query(
-      "INSERT INTO user_roles (user_id, role_id) VALUES ?",
-      [userRolesData]
+    let roleName;
+    switch (role) {
+      case "Администратор":
+        roleName = "admin";
+        break;
+      case "Менеджер":
+        roleName = "manager";
+        break;
+      default:
+        roleName = "user";
+    }
+
+    const [roleRows] = await connection.query(
+      "SELECT id FROM roles WHERE name = ?",
+      [roleName]
     );
+    if (roleRows.length === 0) {
+      throw new Error(`Role '${roleName}' not found.`);
+    }
+    const roleId = roleRows[0].id;
+
+    const userRoleSql =
+      "INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)";
+    await connection.query(userRoleSql, [newUserId, roleId]);
 
     await connection.commit();
     res.status(201).json({
       success: true,
       message: "User created successfully",
-      data: { id: userId },
+      data: { id: newUserId, ...req.body },
     });
   } catch (error) {
     await connection.rollback();
-    if (error.code === "ER_DUP_ENTRY") {
-      return res
-        .status(409)
-        .json({ success: false, message: "Username already exists." });
-    }
     res.status(500).json({
       success: false,
       message: "Failed to create user",
@@ -814,19 +844,70 @@ apiRouter.post("/users", async (req, res) => {
 });
 
 apiRouter.put("/users/:id", async (req, res) => {
-  const { id } = req.params;
-  const { telegram_id, username, first_name, last_name, role } = req.body;
-  const sql =
-    "UPDATE user SET telegram_id = ?, username = ?, first_name = ?, last_name = ?, role = ? WHERE id = ?";
-  await pool.query(sql, [
-    telegram_id,
-    username,
-    first_name,
-    last_name,
-    role,
-    id,
-  ]);
-  res.json({ success: true, data: { id, ...req.body } });
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const { id } = req.params;
+    const { telegram_id, username, first_name, last_name, role } = req.body;
+
+    const userSql =
+      "UPDATE user SET username = ?, first_name = ?, last_name = ?, telegram_chat_id = ? WHERE id = ?";
+    await connection.query(userSql, [
+      username,
+      first_name,
+      last_name,
+      telegram_id,
+      id,
+    ]);
+
+    if (role) {
+      let roleName;
+      switch (role) {
+        case "Администратор":
+          roleName = "admin";
+          break;
+        case "Менеджер":
+          roleName = "manager";
+          break;
+        case "Сотрудник":
+          roleName = "user";
+          break;
+        default:
+          throw new Error("Invalid role specified");
+      }
+
+      const [roleRows] = await connection.query(
+        "SELECT id FROM roles WHERE name = ?",
+        [roleName]
+      );
+      if (roleRows.length === 0) {
+        throw new Error(`Role '${roleName}' not found.`);
+      }
+      const roleId = roleRows[0].id;
+
+      const userRoleSql = "UPDATE user_roles SET role_id = ? WHERE user_id = ?";
+      const [updateResult] = await connection.query(userRoleSql, [roleId, id]);
+
+      if (updateResult.affectedRows === 0) {
+        await connection.query(
+          "INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)",
+          [id, roleId]
+        );
+      }
+    }
+
+    await connection.commit();
+    res.json({ success: true, data: { id, ...req.body } });
+  } catch (error) {
+    await connection.rollback();
+    res.status(500).json({
+      success: false,
+      message: `Failed to update user: ${error.message}`,
+      error: error.message,
+    });
+  } finally {
+    connection.release();
+  }
 });
 
 apiRouter.delete("/users/:id", async (req, res) => {

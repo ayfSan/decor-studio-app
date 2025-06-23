@@ -26,13 +26,11 @@ app.get("/api/test", async (req, res) => {
       db_solution: rows[0].solution,
     });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "API is not working",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "API is not working",
+      error: error.message,
+    });
   }
 });
 
@@ -58,13 +56,11 @@ app.get("/api/statistics", async (req, res) => {
       },
     });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to fetch statistics",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch statistics",
+      error: error.message,
+    });
   }
 });
 
@@ -75,13 +71,11 @@ app.get("/api/events/upcoming", async (req, res) => {
     );
     res.json({ success: true, data: rows });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to fetch upcoming events",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch upcoming events",
+      error: error.message,
+    });
   }
 });
 
@@ -91,13 +85,11 @@ app.get("/api/events", async (req, res) => {
     const [rows] = await pool.query("SELECT * FROM event ORDER BY date DESC");
     res.json({ success: true, data: rows });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to fetch events",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch events",
+      error: error.message,
+    });
   }
 });
 
@@ -131,13 +123,11 @@ app.get("/api/events/:id", async (req, res) => {
 
     res.json({ success: true, data: event });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to fetch event details",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch event details",
+      error: error.message,
+    });
   }
 });
 
@@ -190,13 +180,11 @@ app.post("/api/events", async (req, res) => {
     res.status(201).json({ success: true, data: { id: eventId, ...req.body } });
   } catch (error) {
     await connection.rollback();
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to create event",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to create event",
+      error: error.message,
+    });
   } finally {
     connection.release();
   }
@@ -259,13 +247,11 @@ app.put("/api/events/:id", async (req, res) => {
     res.json({ success: true, message: "Event updated successfully" });
   } catch (error) {
     await connection.rollback();
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to update event",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to update event",
+      error: error.message,
+    });
   } finally {
     connection.release();
   }
@@ -297,13 +283,11 @@ app.delete("/api/events/:id", async (req, res) => {
     res.json({ success: true, message: "Event deleted successfully" });
   } catch (error) {
     await connection.rollback();
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to delete event",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete event",
+      error: error.message,
+    });
   } finally {
     connection.release();
   }
@@ -317,13 +301,11 @@ app.get("/api/event-categories", async (req, res) => {
     );
     res.json({ success: true, data: categories });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to fetch event categories",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch event categories",
+      error: error.message,
+    });
   }
 });
 
@@ -338,13 +320,11 @@ app.post("/api/event-categories", async (req, res) => {
       .status(201)
       .json({ success: true, data: { id: result.insertId, name } });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to create event category",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to create event category",
+      error: error.message,
+    });
   }
 });
 
@@ -358,13 +338,11 @@ app.put("/api/event-categories/:id", async (req, res) => {
     );
     res.json({ success: true, data: { id, name } });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to update event category",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to update event category",
+      error: error.message,
+    });
   }
 });
 
@@ -376,83 +354,185 @@ app.delete("/api/event-categories/:id", async (req, res) => {
     ]);
     res.json({ success: true, message: "Event category deleted" });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to delete event category",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete event category",
+      error: error.message,
+    });
   }
 });
 
 // --- USERS ---
 app.get("/api/users", async (req, res) => {
   try {
-    const [users] = await pool.query(
-      "SELECT id, telegram_id, username, first_name, last_name, role, created_at FROM user ORDER BY first_name, last_name"
-    );
+    const [users] = await pool.query(`
+      SELECT
+        u.id,
+        u.username,
+        u.first_name,
+        u.last_name,
+        u.created_at,
+        u.telegram_chat_id AS telegram_id,
+        CASE r.name
+            WHEN 'admin' THEN 'Администратор'
+            WHEN 'manager' THEN 'Менеджер'
+            WHEN 'user' THEN 'Сотрудник'
+            ELSE 'Не указана'
+        END AS role
+      FROM
+        user u
+      LEFT JOIN
+        user_roles ur ON u.id = ur.user_id
+      LEFT JOIN
+        roles r ON ur.role_id = r.id
+      ORDER BY
+        u.first_name, u.last_name
+    `);
     res.json({ success: true, data: users });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to fetch users",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch users",
+      error: error.message,
+    });
   }
 });
 
 app.post("/api/users", async (req, res) => {
+  const connection = await pool.getConnection(); // Get connection for transaction
   try {
+    await connection.beginTransaction();
+
+    // 1. Prepare user data, note telegram_id is now telegram_chat_id
     const { telegram_id, username, first_name, last_name, role } = req.body;
-    const sql =
-      "INSERT INTO user (telegram_id, username, first_name, last_name, role) VALUES (?, ?, ?, ?, ?)";
-    const [result] = await pool.query(sql, [
-      telegram_id,
+    const userSql =
+      "INSERT INTO user (username, first_name, last_name, telegram_chat_id, password) VALUES (?, ?, ?, ?, ?)";
+
+    // The schema requires a password, which is not in the form, using a placeholder.
+    const [userResult] = await connection.query(userSql, [
       username,
       first_name,
       last_name,
-      role,
+      telegram_id,
+      "placeholder_password",
     ]);
+    const newUserId = userResult.insertId;
+
+    // 2. Get role_id from role name
+    let roleName;
+    switch (role) {
+      case "Администратор":
+        roleName = "admin";
+        break;
+      case "Менеджер":
+        roleName = "manager";
+        break;
+      case "Сотрудник":
+        roleName = "user";
+        break;
+      default:
+        throw new Error("Invalid role specified");
+    }
+
+    const [roleRows] = await connection.query(
+      "SELECT id FROM roles WHERE name = ?",
+      [roleName]
+    );
+    if (roleRows.length === 0) {
+      throw new Error(`Role '${roleName}' not found.`);
+    }
+    const roleId = roleRows[0].id;
+
+    // 3. Link user to role
+    const userRoleSql =
+      "INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)";
+    await connection.query(userRoleSql, [newUserId, roleId]);
+
+    await connection.commit(); // Commit transaction
+
     res
       .status(201)
-      .json({ success: true, data: { id: result.insertId, ...req.body } });
+      .json({ success: true, data: { id: newUserId, ...req.body } });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to create user",
-        error: error.message,
-      });
+    await connection.rollback(); // Rollback on error
+    res.status(500).json({
+      success: false,
+      message: `Failed to create user: ${error.message}`,
+      error: error.message,
+    });
+  } finally {
+    connection.release(); // Release connection back to the pool
   }
 });
 
 app.put("/api/users/:id", async (req, res) => {
+  const connection = await pool.getConnection();
   try {
+    await connection.beginTransaction();
     const { id } = req.params;
     const { telegram_id, username, first_name, last_name, role } = req.body;
-    const sql =
-      "UPDATE user SET telegram_id = ?, username = ?, first_name = ?, last_name = ?, role = ? WHERE id = ?";
-    await pool.query(sql, [
-      telegram_id,
+
+    // 1. Update user table
+    const userSql =
+      "UPDATE user SET username = ?, first_name = ?, last_name = ?, telegram_chat_id = ? WHERE id = ?";
+    await connection.query(userSql, [
       username,
       first_name,
       last_name,
-      role,
+      telegram_id,
       id,
     ]);
+
+    // 2. Update role
+    if (role) {
+      let roleName;
+      switch (role) {
+        case "Администратор":
+          roleName = "admin";
+          break;
+        case "Менеджер":
+          roleName = "manager";
+          break;
+        case "Сотрудник":
+          roleName = "user";
+          break;
+        default:
+          throw new Error("Invalid role specified");
+      }
+
+      const [roleRows] = await connection.query(
+        "SELECT id FROM roles WHERE name = ?",
+        [roleName]
+      );
+      if (roleRows.length === 0) {
+        throw new Error(`Role '${roleName}' not found.`);
+      }
+      const roleId = roleRows[0].id;
+
+      // Assuming one role per user for simplicity, replace existing one
+      const userRoleSql = "UPDATE user_roles SET role_id = ? WHERE user_id = ?";
+      const [updateResult] = await connection.query(userRoleSql, [roleId, id]);
+
+      // If no role existed, insert one
+      if (updateResult.affectedRows === 0) {
+        await connection.query(
+          "INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)",
+          [id, roleId]
+        );
+      }
+    }
+
+    await connection.commit();
     res.json({ success: true, data: { id, ...req.body } });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to update user",
-        error: error.message,
-      });
+    await connection.rollback();
+    res.status(500).json({
+      success: false,
+      message: `Failed to update user: ${error.message}`,
+      error: error.message,
+    });
+  } finally {
+    connection.release();
   }
 });
 
@@ -462,13 +542,11 @@ app.delete("/api/users/:id", async (req, res) => {
     await pool.query("DELETE FROM user WHERE id = ?", [id]);
     res.json({ success: true, message: "User deleted" });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to delete user",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete user",
+      error: error.message,
+    });
   }
 });
 
@@ -487,13 +565,11 @@ app.get("/api/team-members", async (req, res) => {
     ];
     res.json({ success: true, data: teamMembers });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to fetch team members",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch team members",
+      error: error.message,
+    });
   }
 });
 
@@ -503,13 +579,11 @@ app.get("/api/venues", async (req, res) => {
     const [rows] = await pool.query("SELECT * FROM venue ORDER BY name_venue");
     res.json({ success: true, data: rows });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to fetch venues",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch venues",
+      error: error.message,
+    });
   }
 });
 
@@ -529,13 +603,11 @@ app.post("/api/venues", async (req, res) => {
       .status(201)
       .json({ success: true, data: { id: result.insertId, ...req.body } });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to create venue",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to create venue",
+      error: error.message,
+    });
   }
 });
 
@@ -555,13 +627,11 @@ app.put("/api/venues/:id", async (req, res) => {
     ]);
     res.json({ success: true, data: { id, ...req.body } });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to update venue",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to update venue",
+      error: error.message,
+    });
   }
 });
 
@@ -571,13 +641,11 @@ app.delete("/api/venues/:id", async (req, res) => {
     await pool.query("DELETE FROM venue WHERE idvenue = ?", [id]);
     res.json({ success: true, message: "Venue deleted" });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to delete venue",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete venue",
+      error: error.message,
+    });
   }
 });
 
@@ -589,13 +657,11 @@ app.get("/api/customers", async (req, res) => {
     );
     res.json({ success: true, data: rows });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to fetch customers",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch customers",
+      error: error.message,
+    });
   }
 });
 
@@ -616,13 +682,11 @@ app.post("/api/customers", async (req, res) => {
       .status(201)
       .json({ success: true, data: { id: result.insertId, ...req.body } });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to create customer",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to create customer",
+      error: error.message,
+    });
   }
 });
 
@@ -643,13 +707,11 @@ app.put("/api/customers/:id", async (req, res) => {
     ]);
     res.json({ success: true, data: { id, ...req.body } });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to update customer",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to update customer",
+      error: error.message,
+    });
   }
 });
 
@@ -659,13 +721,11 @@ app.delete("/api/customers/:id", async (req, res) => {
     await pool.query("DELETE FROM customer WHERE idcustomer = ?", [id]);
     res.json({ success: true, message: "Customer deleted" });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to delete customer",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete customer",
+      error: error.message,
+    });
   }
 });
 
@@ -682,13 +742,11 @@ app.get("/api/cashflow", async (req, res) => {
     `);
     res.json({ success: true, data: rows });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to fetch cashflow records",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch cashflow records",
+      error: error.message,
+    });
   }
 });
 
@@ -720,13 +778,11 @@ app.post("/api/cashflow", async (req, res) => {
       .status(201)
       .json({ success: true, data: { id: result.insertId, ...req.body } });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to create cashflow transaction",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to create cashflow transaction",
+      error: error.message,
+    });
   }
 });
 
@@ -758,13 +814,11 @@ app.put("/api/cashflow/:id", async (req, res) => {
     ]);
     res.json({ success: true, data: { id, ...req.body } });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to update cashflow record",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to update cashflow record",
+      error: error.message,
+    });
   }
 });
 
@@ -774,13 +828,11 @@ app.delete("/api/cashflow/:id", async (req, res) => {
     await pool.query("DELETE FROM cashflow WHERE idcashflow = ?", [id]);
     res.json({ success: true, message: "Cashflow record deleted" });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to delete cashflow record",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete cashflow record",
+      error: error.message,
+    });
   }
 });
 
@@ -792,13 +844,11 @@ app.get("/api/cashflow/accounts", async (req, res) => {
     );
     res.json({ success: true, data: rows });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to fetch cashflow accounts",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch cashflow accounts",
+      error: error.message,
+    });
   }
 });
 
@@ -813,13 +863,11 @@ app.post("/api/cashflow/accounts", async (req, res) => {
       .status(201)
       .json({ success: true, data: { id: result.insertId, name } });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to create account",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to create account",
+      error: error.message,
+    });
   }
 });
 
@@ -833,13 +881,11 @@ app.put("/api/cashflow/accounts/:id", async (req, res) => {
     );
     res.json({ success: true, data: { id, name } });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to update account",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to update account",
+      error: error.message,
+    });
   }
 });
 
@@ -852,13 +898,11 @@ app.delete("/api/cashflow/accounts/:id", async (req, res) => {
     );
     res.json({ success: true, message: "Account deleted" });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to delete account",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete account",
+      error: error.message,
+    });
   }
 });
 
@@ -870,13 +914,11 @@ app.get("/api/cashflow-categories", async (req, res) => {
     );
     res.json({ success: true, data: rows });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to fetch cashflow categories",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch cashflow categories",
+      error: error.message,
+    });
   }
 });
 
@@ -891,13 +933,11 @@ app.post("/api/cashflow-categories", async (req, res) => {
       .status(201)
       .json({ success: true, data: { id: result.insertId, name } });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to create cashflow category",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to create cashflow category",
+      error: error.message,
+    });
   }
 });
 
@@ -911,13 +951,11 @@ app.put("/api/cashflow-categories/:id", async (req, res) => {
     );
     res.json({ success: true, data: { id, name } });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to update cashflow category",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to update cashflow category",
+      error: error.message,
+    });
   }
 });
 
@@ -930,13 +968,11 @@ app.delete("/api/cashflow-categories/:id", async (req, res) => {
     );
     res.json({ success: true, message: "Cashflow category deleted" });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to delete cashflow category",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete cashflow category",
+      error: error.message,
+    });
   }
 });
 
@@ -950,13 +986,11 @@ app.get("/api/events/:eventId/tasks", async (req, res) => {
     );
     res.json({ success: true, data: tasks });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to fetch tasks",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch tasks",
+      error: error.message,
+    });
   }
 });
 
@@ -972,20 +1006,16 @@ app.post("/api/tasks", async (req, res) => {
       priority,
       due_date || null,
     ]);
-    res
-      .status(201)
-      .json({
-        success: true,
-        data: { id: result.insertId, ...req.body, completed: 0 },
-      });
+    res.status(201).json({
+      success: true,
+      data: { id: result.insertId, ...req.body, completed: 0 },
+    });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to create task",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to create task",
+      error: error.message,
+    });
   }
 });
 
@@ -1005,13 +1035,11 @@ app.put("/api/tasks/:taskId", async (req, res) => {
     ]);
     res.json({ success: true, data: { id: taskId, ...req.body } });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to update task",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to update task",
+      error: error.message,
+    });
   }
 });
 
@@ -1021,13 +1049,11 @@ app.delete("/api/tasks/:taskId", async (req, res) => {
     await pool.query("DELETE FROM task WHERE idtask = ?", [taskId]);
     res.json({ success: true, message: "Task deleted successfully" });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to delete task",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete task",
+      error: error.message,
+    });
   }
 });
 
@@ -1044,13 +1070,11 @@ app.get("/api/documents", async (req, res) => {
     const [documents] = await pool.query(sql);
     res.json({ success: true, data: documents });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to fetch documents",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch documents",
+      error: error.message,
+    });
   }
 });
 
@@ -1066,25 +1090,21 @@ app.get("/api/events/:eventId/documents", async (req, res) => {
     const [documents] = await pool.query(sql, [eventId]);
     res.json({ success: true, data: documents });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to fetch documents for event",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch documents for event",
+      error: error.message,
+    });
   }
 });
 
 app.post("/api/documents/generate", async (req, res) => {
   const { eventId, templateId } = req.body;
   if (!eventId || !templateId) {
-    return res
-      .status(400)
-      .json({
-        success: false,
-        message: "Event ID and Template ID are required.",
-      });
+    return res.status(400).json({
+      success: false,
+      message: "Event ID and Template ID are required.",
+    });
   }
 
   const connection = await pool.getConnection();
@@ -1191,13 +1211,11 @@ app.post("/api/documents/generate", async (req, res) => {
     res.send(pdfBuffer);
   } catch (error) {
     await connection.rollback();
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to generate document",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to generate document",
+      error: error.message,
+    });
   } finally {
     connection.release();
   }
@@ -1304,13 +1322,11 @@ app.get("/api/document-templates", async (req, res) => {
     );
     res.json({ success: true, data: templates });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to fetch document templates",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch document templates",
+      error: error.message,
+    });
   }
 });
 
@@ -1327,13 +1343,11 @@ app.get("/api/document-templates/:id", async (req, res) => {
       res.status(404).json({ success: false, message: "Template not found" });
     }
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to fetch single document template",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch single document template",
+      error: error.message,
+    });
   }
 });
 
@@ -1352,13 +1366,11 @@ app.post("/api/document-templates", async (req, res) => {
       .status(201)
       .json({ success: true, data: { id: result.insertId, ...req.body } });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to create document template",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to create document template",
+      error: error.message,
+    });
   }
 });
 
@@ -1371,13 +1383,11 @@ app.put("/api/document-templates/:id", async (req, res) => {
     await pool.query(sql, [name, type, prefix || null, content, id]);
     res.json({ success: true, data: { id, ...req.body } });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to update document template",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to update document template",
+      error: error.message,
+    });
   }
 });
 
@@ -1387,13 +1397,11 @@ app.delete("/api/document-templates/:id", async (req, res) => {
     await pool.query("DELETE FROM document_template WHERE id = ?", [id]);
     res.json({ success: true, message: "Document template deleted" });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to delete document template",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete document template",
+      error: error.message,
+    });
   }
 });
 

@@ -240,7 +240,7 @@ CREATE TABLE `document` (
   KEY `fk_document_template_idx` (`document_template_id`),
   CONSTRAINT `document_event_idevent_fkey` FOREIGN KEY (`event_idevent`) REFERENCES `event` (`idevent`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `fk_document_template` FOREIGN KEY (`document_template_id`) REFERENCES `document_template` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -249,7 +249,7 @@ CREATE TABLE `document` (
 
 LOCK TABLES `document` WRITE;
 /*!40000 ALTER TABLE `document` DISABLE KEYS */;
-INSERT INTO `document` VALUES (4,2,'Акт выполненных работ','АКТ-4','2025-06-09 22:27:25.408','ACT',NULL,2);
+INSERT INTO `document` VALUES (4,2,'Акт выполненных работ','АКТ-4','2025-06-09 22:27:25.408','ACT',NULL,2),(5,2,'Договор на декор','ДК-5','2025-06-16 04:29:02.127','CONTRACT',NULL,1),(6,6,'Договор на декор','ДК-6','2025-06-16 23:17:17.780','CONTRACT',NULL,1);
 /*!40000 ALTER TABLE `document` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -307,7 +307,7 @@ CREATE TABLE `event` (
   CONSTRAINT `event_category_event_idcategory_event_fkey` FOREIGN KEY (`category_event_idcategory_event`) REFERENCES `category_event` (`idcategory_event`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `event_customer_idcustomer_fkey` FOREIGN KEY (`customer_idcustomer`) REFERENCES `customer` (`idcustomer`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `event_venue_idvenue_fkey` FOREIGN KEY (`venue_idvenue`) REFERENCES `venue` (`idvenue`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -316,7 +316,7 @@ CREATE TABLE `event` (
 
 LOCK TABLES `event` WRITE;
 /*!40000 ALTER TABLE `event` DISABLE KEYS */;
-INSERT INTO `event` VALUES (1,'2025-06-15 09:00:00.000','Тестовая Свадьба Ивановых',1,1,1,200000.00,'Молодожены и 50 гостей'),(2,'2025-08-20 13:00:00.000','Тестовый Корпоратив ООО \"Ромашка\"',2,2,2,350000.00,'Сотрудники компании, 70 человек'),(3,'2025-06-04 18:03:00.000','Тестовое мероприятие 1243',2,2,1,500000.00,'-'),(5,'2025-06-18 04:15:00.000','Тест1',2,1,1,250000.00,NULL);
+INSERT INTO `event` VALUES (1,'2025-06-15 09:00:00.000','Тестовая Свадьба Ивановых',1,1,1,200000.00,'Молодожены и 50 гостей'),(2,'2025-08-19 22:00:00.000','Тестовый Корпоратив ООО \"Ромашка\"',2,2,2,350000.00,'Сотрудники компании, 70 человек'),(3,'2025-06-04 18:03:00.000','Тестовое мероприятие 1243',2,2,1,500000.00,'-'),(5,'2025-06-18 04:15:00.000','Тест1',2,1,1,250000.00,NULL),(6,'2025-06-16 23:16:00.000','tot hfp1',3,2,1,50000.00,NULL);
 /*!40000 ALTER TABLE `event` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -343,6 +343,7 @@ CREATE TABLE `event_contact` (
 
 LOCK TABLES `event_contact` WRITE;
 /*!40000 ALTER TABLE `event_contact` DISABLE KEYS */;
+INSERT INTO `event_contact` VALUES (2,2),(6,2);
 /*!40000 ALTER TABLE `event_contact` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -369,6 +370,7 @@ CREATE TABLE `event_user` (
 
 LOCK TABLES `event_user` WRITE;
 /*!40000 ALTER TABLE `event_user` DISABLE KEYS */;
+INSERT INTO `event_user` VALUES (6,3);
 /*!40000 ALTER TABLE `event_user` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -416,7 +418,7 @@ CREATE TABLE `task` (
   PRIMARY KEY (`idtask`),
   KEY `fk_task_event_idx` (`event_idevent`),
   CONSTRAINT `fk_task_event` FOREIGN KEY (`event_idevent`) REFERENCES `event` (`idevent`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -425,7 +427,7 @@ CREATE TABLE `task` (
 
 LOCK TABLES `task` WRITE;
 /*!40000 ALTER TABLE `task` DISABLE KEYS */;
-INSERT INTO `task` VALUES (1,2,'1','1',0,'medium','2025-06-11','2025-06-09 16:24:48');
+INSERT INTO `task` VALUES (1,2,'Проверить свечи ','Проверить свечи на чистоту, при необходимости заменить батарейки',0,'low','2025-06-10','2025-06-09 16:24:48'),(4,2,'Съездить в строительный магазин','Закупить строительные материалы: стяжки, мусорные пакеты',1,'high','2025-06-17','2025-06-15 23:10:10'),(5,2,'Заготовки из пластика ','Закупить пластик, нарезать на части, прибить степлером ',0,'medium','2025-06-03','2025-06-15 23:21:12');
 /*!40000 ALTER TABLE `task` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -439,11 +441,11 @@ DROP TABLE IF EXISTS `user`;
 CREATE TABLE `user` (
   `id` int NOT NULL AUTO_INCREMENT,
   `username` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  `password` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `password` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `first_name` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `last_name` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `telegram_chat_id` bigint DEFAULT NULL,
-  `telegram_link_code` varchar(45) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `telegram_link_code` varchar(45) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `telegram_link_code_expires_at` datetime DEFAULT NULL,
   `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
@@ -537,4 +539,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-06-15 19:52:54
+-- Dump completed on 2025-06-23 22:10:09

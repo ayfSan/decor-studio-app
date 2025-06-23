@@ -7,6 +7,19 @@ const token = process.env.BOT_TOKEN;
 const webAppUrl = process.env.WEBAPP_URL;
 const apiUrl = process.env.API_URL || "http://localhost:3000/api";
 
+// Проверка на HTTPS для Web App
+if (webAppUrl && !webAppUrl.startsWith("https://")) {
+  logger.logError(
+    "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+  );
+  logger.logError(
+    `[SECURITY WARNING] WEBAPP_URL is not HTTPS! Telegram may block requests. Current URL: ${webAppUrl}`
+  );
+  logger.logError(
+    "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+  );
+}
+
 // Функция для формирования URL с учетом базового пути
 const getWebAppUrl = (path = "") => {
   const baseUrl = webAppUrl.endsWith("/") ? webAppUrl.slice(0, -1) : webAppUrl;
@@ -26,7 +39,7 @@ bot.onText(/\/start/, async (msg) => {
 
   bot.sendMessage(
     chatId,
-    "👋 Добро пожаловать в Decor Studio!\n\nЯ помогу вам управлять событиями, задачами и финансами. Выберите нужный раздел:",
+    "👋 Добро пожаловать в 2d_decor studio!\n\nЯ помогу вам управлять событиями, задачами и финансами. Для быстрого доступа к приложению используйте команду /app.",
     {
       reply_markup: {
         keyboard: [
@@ -35,6 +48,24 @@ bot.onText(/\/start/, async (msg) => {
           ["⚙️ Настройки", "❓ Помощь"],
         ],
         resize_keyboard: true,
+      },
+    }
+  );
+});
+
+// Команда /app для открытия веб-приложения
+bot.onText(/\/(app|web_app)/, async (msg) => {
+  const chatId = msg.chat.id;
+  await logger.logCommand(chatId, "app");
+
+  bot.sendMessage(
+    chatId,
+    "👇 Нажмите на кнопку ниже, чтобы открыть приложение.",
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "🚀 Открыть приложение", web_app: { url: getWebAppUrl() } }],
+        ],
       },
     }
   );
@@ -71,6 +102,7 @@ async function sendHelp(msg) {
 #свадьба 01.05.2024 -5000 Предоплата за зал
 
 *Дополнительные команды:*
+/app - открыть веб-приложение
 /stats - показать вашу статистику
 /start - перезапустить бота
 /link <code> - привязать ваш Telegram к аккаунту в CRM
@@ -147,6 +179,99 @@ async function handleLinkCommand(chatId, code) {
     );
   }
 }
+
+// --- Быстрое добавление финансов ---
+const financeRegex =
+  /^#(\S+)\s+(\d{2}\.\d{2}\.\d{4})\s+([+-]\d+(\.\d+)?)\s+(.*)$/i;
+
+bot.onText(financeRegex, async (msg, match) => {
+  const chatId = msg.chat.id;
+  await logger.logCommand(chatId, "quick_finance_add", { message: msg.text });
+
+  // 1. Проверить, привязан ли пользователь
+  let user;
+  try {
+    const response = await axios.get(`${apiUrl}/users/by-chat-id/${chatId}`);
+    user = response.data;
+    if (!user) {
+      bot.sendMessage(
+        chatId,
+        "❗️ Ваш Telegram не привязан к аккаунту. Используйте команду /link, чтобы привязать его."
+      );
+      return;
+    }
+  } catch (error) {
+    bot.sendMessage(
+      chatId,
+      "❗️ Не удалось проверить вашу авторизацию. Пожалуйста, попробуйте позже."
+    );
+    await logger.logError(
+      `Quick finance: Auth check failed for chatId ${chatId}. Error: ${error.message}`
+    );
+    return;
+  }
+
+  // 2. Распарсить данные из сообщения
+  const [, eventName, eventDateStr, amountStr, description] = match;
+  const amount = parseFloat(amountStr.replace(",", "."));
+  const [day, month, year] = eventDateStr.split(".");
+  // Формируем дату в формате ISO, чтобы избежать проблем с часовыми поясами на сервере
+  const eventDate = new Date(Date.UTC(year, month - 1, day));
+
+  try {
+    // 3. Найти событие по имени и дате
+    const eventResponse = await axios.post(`${apiUrl}/events/find`, {
+      name: eventName,
+      date: eventDate.toISOString().split("T")[0], // Отправляем YYYY-MM-DD
+      userId: user.id, // Отправляем ID пользователя для точности поиска
+    });
+
+    const event = eventResponse.data;
+    if (!event) {
+      bot.sendMessage(
+        chatId,
+        `❓ Не удалось найти событие с названием "${eventName}" на дату ${eventDateStr}. Проверьте данные и попробуйте снова.`
+      );
+      return;
+    }
+
+    // 4. Создать транзакцию
+    const cashflowPayload = {
+      event_idevent: event.idevent,
+      date: new Date().toISOString(), // Дата транзакции - текущая
+      note: description,
+      income: amount > 0 ? amount : 0,
+      expense: amount < 0 ? Math.abs(amount) : 0,
+      // Нужны значения по умолчанию или логика выбора для этих полей
+      account_cashflow_idaccount_cashflow: 1, // TODO: Уточнить, как выбирать счет
+      category_cashflow_idcategory_cashflow: 1, // TODO: Уточнить, как выбирать категорию
+      transaction: `Быстрое добавление от ${user.name}`,
+    };
+
+    await axios.post(`${apiUrl}/cashflow`, cashflowPayload);
+
+    // 5. Отправить подтверждение
+    const sign = amount > 0 ? "+" : "";
+    bot.sendMessage(
+      chatId,
+      `✅ Успешно добавлено: ${sign}${amount} руб. к событию "${event.name}" (${eventDateStr}).\nОписание: ${description}`
+    );
+    await logger.logInfo(
+      `Quick finance: Added ${amount} for event ${event.idevent} by user ${user.id}`
+    );
+  } catch (error) {
+    let errorMessage = "Произошла ошибка при добавлении финансов.";
+    if (error.response && error.response.data && error.response.data.message) {
+      errorMessage = `❌ Ошибка: ${error.response.data.message}`;
+    } else if (error.message.includes("404")) {
+      errorMessage = `❓ Не удалось найти событие с названием "${eventName}" на дату ${eventDateStr}. Проверьте данные и попробуйте снова.`;
+    }
+    bot.sendMessage(chatId, errorMessage);
+    await logger.logError(
+      `Quick finance: Failed for chatId ${chatId}. Error: ${error.message}`
+    );
+  }
+});
 
 // Обработка кнопок клавиатуры
 bot.on("message", async (msg) => {

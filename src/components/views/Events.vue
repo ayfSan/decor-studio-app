@@ -294,12 +294,18 @@
             >
               <p>
                 {{ member.name }}
-                <span class="text-gray-500 text-sm">({{ member.type }})</span>
+                <span class="text-gray-500 text-sm"
+                  >({{ member.specialty || member.type }})</span
+                >
               </p>
             </li>
           </ul>
           <p v-else class="p-3 text-sm text-gray-500 text-center">
-            Участники не найдены.
+            {{
+              participantSearchQuery
+                ? "Участники не найдены."
+                : "Все доступные участники уже добавлены или список пуст."
+            }}
           </p>
         </div>
         <div class="mt-6 flex justify-end">
@@ -343,6 +349,16 @@ const isEventModalOpen = ref(false);
 const isEditMode = ref(false);
 const currentEvent = ref(null);
 
+const defaultEvent = {
+  project_name: "",
+  date: "",
+  category_event_idcategory_event: null,
+  venue_idvenue: null,
+  customer_idcustomer: null,
+  cost: null,
+  participants: [],
+};
+
 // Participant Modal state
 const isAddParticipantModalOpen = ref(false);
 const participantSearchQuery = ref("");
@@ -371,17 +387,19 @@ async function loadEvents() {
 // --- DATA LOADING ---
 const loadModalData = async () => {
   try {
-    const [categoriesRes, venuesRes, customersRes, templatesRes] =
+    const [categoriesRes, venuesRes, customersRes, templatesRes, teamRes] =
       await Promise.all([
         apiService.getEventCategories(),
         apiService.getVenues(),
         apiService.getCustomers(),
         apiService.getDocumentTemplates(),
+        apiService.getTeamMembers(),
       ]);
     eventCategories.value = categoriesRes.data.data;
     venuesList.value = venuesRes.data.data;
     customersList.value = customersRes.data.data;
     documentTemplates.value = templatesRes.data.data;
+    participantsList.value = teamRes.data.data;
   } catch (error) {
     console.error("Failed to load modal prerequisites:", error);
   }
@@ -441,6 +459,11 @@ const isGroupExpanded = (groupId) => expandedGroups.value[groupId] !== false;
 // --- EVENT MODAL LOGIC ---
 const openAddEventModal = () => {
   currentEvent.value = JSON.parse(JSON.stringify(defaultEvent));
+
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  currentEvent.value.date = now.toISOString().slice(0, 16);
+
   isEventModalOpen.value = true;
   loadModalData();
 };
@@ -483,16 +506,21 @@ const saveEvent = async () => {
 // --- PARTICIPANT MODAL LOGIC ---
 const filteredTeamMembers = computed(() => {
   if (!isAddParticipantModalOpen.value || !currentEvent.value) return [];
+
   const addedIds = new Set(
-    currentEvent.value.participants.map((p) => p.uniqueId)
+    (currentEvent.value.participants || []).map((p) => p.uniqueId)
   );
+
   let available = participantsList.value.filter(
     (member) => !addedIds.has(member.uniqueId)
   );
+
   if (participantSearchQuery.value) {
     const query = participantSearchQuery.value.toLowerCase();
-    available = available.filter((member) =>
-      member.name.toLowerCase().includes(query)
+    available = available.filter(
+      (member) =>
+        member.name.toLowerCase().includes(query) ||
+        (member.specialty && member.specialty.toLowerCase().includes(query))
     );
   }
   return available;
