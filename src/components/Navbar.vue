@@ -59,6 +59,18 @@
         <span>Аналитика</span>
       </router-link>
 
+      <router-link
+        to="/settings"
+        class="nav-link"
+        :class="{ 'active-link': $route.path === '/settings' }"
+        @click="$emit('close-menu')"
+      >
+        <span class="material-symbols-outlined text-primary-600 mr-3"
+          >settings</span
+        >
+        <span>Настройки</span>
+      </router-link>
+
       <!-- Финансовый раздел -->
       <div class="pt-3">
         <h3 class="nav-section-title">Финансы</h3>

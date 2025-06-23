@@ -89,5 +89,14 @@ export const useAuthStore = defineStore("auth", {
         // чтобы убедиться, что сессия на сервере не истекла.
       }
     },
+
+    /**
+     * Обновляет данные пользователя в хранилище.
+     * @param {object} newUser - Новый объект пользователя.
+     */
+    setUser(newUser) {
+      this.user = newUser;
+      localStorage.setItem("user", JSON.stringify(newUser));
+    },
   },
 });

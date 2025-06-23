@@ -75,6 +75,14 @@ const apiService = {
     delete apiClient.defaults.headers.common["Authorization"];
   },
 
+  /**
+   * Получает данные текущего аутентифицированного пользователя.
+   * @returns {Promise} - Промис с данными пользователя.
+   */
+  getMe() {
+    return apiClient.get("/auth/me");
+  },
+
   // --- Статистика ---
   getStatistics() {
     return apiClient.get("/statistics");

@@ -55,7 +55,7 @@ CREATE TABLE `cashflow` (
   `transaction` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `account_cashflow_idaccount_cashflow` int NOT NULL,
   `category_cashflow_idcategory_cashflow` int NOT NULL,
-  `event_idevent` int NOT NULL,
+  `event_idevent` int DEFAULT NULL,
   `note` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `income` decimal(10,2) NOT NULL,
   `expense` decimal(10,2) NOT NULL,

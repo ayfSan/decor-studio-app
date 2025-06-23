@@ -121,11 +121,16 @@ app.post("/api/auth/login", async (req, res) => {
     );
     const userRoles = roles.map((r) => r.name);
 
-    const accessToken = jwt.sign(
-      { id: user.id, username: user.username, roles: userRoles },
-      process.env.JWT_SECRET,
-      { expiresIn: "8h" } // Увеличим время жизни токена
-    );
+    const userPayload = {
+      id: user.id,
+      username: user.username,
+      roles: userRoles,
+      telegram_chat_id: user.telegram_chat_id,
+    };
+
+    const accessToken = jwt.sign(userPayload, process.env.JWT_SECRET, {
+      expiresIn: "8h", // Увеличим время жизни токена
+    });
 
     res.json({
       success: true,
@@ -136,6 +141,7 @@ app.post("/api/auth/login", async (req, res) => {
         first_name: user.first_name,
         last_name: user.last_name,
         roles: userRoles,
+        telegram_chat_id: user.telegram_chat_id,
       },
     });
   } catch (error) {
@@ -148,9 +154,43 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
-app.get("/api/auth/me", authenticateToken, (req, res) => {
-  // req.user is populated by the authenticateToken middleware
-  res.json({ success: true, user: req.user });
+app.get("/api/auth/me", authenticateToken, async (req, res) => {
+  try {
+    const [users] = await pool.query(
+      `SELECT u.id, u.username, u.first_name, u.last_name, u.telegram_chat_id, 
+              JSON_ARRAYAGG(r.name) as roles
+       FROM user u
+       LEFT JOIN user_roles ur ON u.id = ur.user_id
+       LEFT JOIN roles r ON ur.role_id = r.id
+       WHERE u.id = ?
+       GROUP BY u.id`,
+      [req.user.id]
+    );
+
+    if (users.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
+    }
+
+    // Роли могут быть [null], если у пользователя нет ролей. Очистим это.
+    if (
+      users[0].roles &&
+      users[0].roles.length === 1 &&
+      users[0].roles[0] === null
+    ) {
+      users[0].roles = [];
+    }
+
+    res.json({ success: true, user: users[0] });
+  } catch (error) {
+    console.error("Failed to fetch user data for /me:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
 });
 
 // --- TELEGRAM LINKING ---
@@ -224,6 +264,52 @@ app.post("/api/telegram/link-account", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to link account",
+      error: error.message,
+    });
+  }
+});
+
+// Endpoint to get events for a specific user via their chat_id
+// This should be protected by a secret token from the bot
+app.get("/api/users/by-chat-id/:chatId/events", async (req, res) => {
+  const { chatId } = req.params;
+  // TODO: Add bot token validation
+  // const botToken = req.headers['bot-token'];
+  // if (botToken !== process.env.BOT_INTERNAL_TOKEN) {
+  //   return res.status(401).json({ success: false, message: "Unauthorized" });
+  // }
+
+  try {
+    // 1. Find user by chat_id
+    const [users] = await pool.query(
+      "SELECT id FROM user WHERE telegram_chat_id = ?",
+      [chatId]
+    );
+
+    if (users.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found for this chat_id" });
+    }
+    const userId = users[0].id;
+
+    // 2. Find events linked to this user
+    // We get the 5 most recent upcoming events
+    const [events] = await pool.query(
+      `SELECT e.idevent, e.project_name, e.date
+       FROM event e
+       JOIN event_user eu ON e.idevent = eu.event_idevent
+       WHERE eu.user_id = ? AND e.date >= CURDATE()
+       ORDER BY e.date ASC
+       LIMIT 5`,
+      [userId]
+    );
+
+    res.json({ success: true, data: events });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching user events",
       error: error.message,
     });
   }

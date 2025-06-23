@@ -28,14 +28,15 @@ const getWebAppUrl = (path = "") => {
 
 const bot = new TelegramBot(token, { polling: true });
 
-// Команда /start
-bot.onText(/\/start/, async (msg) => {
-  const chatId = msg.chat.id;
+// --- Хранилище состояний ---
+const userDialogState = {};
 
-  // Логируем информацию о пользователе
-  await logger.logUser(msg.from);
-  // Логируем использование команды
-  await logger.logCommand(chatId, "start");
+// --- ОБРАБОТЧИКИ КОМАНД ---
+
+bot.onText(/\/start/, (msg) => {
+  const chatId = msg.chat.id;
+  logger.logUser(msg.from);
+  logger.logCommand(chatId, "start");
 
   bot.sendMessage(
     chatId,
@@ -43,9 +44,9 @@ bot.onText(/\/start/, async (msg) => {
     {
       reply_markup: {
         keyboard: [
-          ["📅 События", "💰 Учет средств"],
-          ["👥 Команда", "📝 Задачи"],
-          ["⚙️ Настройки", "❓ Помощь"],
+          ["💰 Добавить операцию"],
+          ["📅 Мои события", "📝 Мои задачи"],
+          ["🚀 Открыть приложение", "❓ Помощь"],
         ],
         resize_keyboard: true,
       },
@@ -53,11 +54,11 @@ bot.onText(/\/start/, async (msg) => {
   );
 });
 
-// Команда /app для открытия веб-приложения
+bot.onText(/\/add/, (msg) => handleAddStart(msg));
+
 bot.onText(/\/(app|web_app)/, async (msg) => {
   const chatId = msg.chat.id;
   await logger.logCommand(chatId, "app");
-
   bot.sendMessage(
     chatId,
     "👇 Нажмите на кнопку ниже, чтобы открыть приложение.",
@@ -71,97 +72,474 @@ bot.onText(/\/(app|web_app)/, async (msg) => {
   );
 });
 
-// Команда /help и кнопка "Помощь"
-bot.onText(/\/help/, sendHelp);
+bot.onText(/\/help/, (msg) => sendHelp(msg));
+
+bot.onText(/\/link$/, (msg) => {
+  bot.sendMessage(
+    msg.chat.id,
+    "Чтобы привязать аккаунт, нужен код. Получите его в настройках вашего профиля в веб-приложении, а затем отправьте мне команду в формате `/link КОД`.",
+    { parse_mode: "Markdown" }
+  );
+});
+
+bot.onText(/\/link (.+)/, (msg, match) =>
+  handleLinkCommand(msg.chat.id, match[1])
+);
+
+bot.onText(/^[A-Z0-9]{6}$/, (msg) => {
+  if (msg.text.startsWith("/")) return;
+  handleLinkCommand(msg.chat.id, msg.text);
+});
+
+// --- ЕДИНЫЙ ОБРАБОТЧИК СООБЩЕНИЙ ---
+
 bot.on("message", async (msg) => {
-  if (msg.text === "❓ Помощь") {
-    await sendHelp(msg);
+  const chatId = msg.chat.id;
+  const text = msg.text;
+
+  // Игнорируем команды, они обрабатываются выше
+  if (text.startsWith("/")) return;
+
+  const state = userDialogState[chatId];
+
+  // Обработка кнопок главного меню
+  switch (text) {
+    case "💰 Добавить операцию":
+      return handleAddStart(msg);
+    case "❓ Помощь":
+      return sendHelp(msg);
+    case "🚀 Открыть приложение":
+      return bot.emit("text", { ...msg, text: "/app" }); // Переиспользуем команду
+  }
+
+  // Если нет состояния, выходим
+  if (!state) return;
+
+  // Обработка шагов диалога
+  switch (state.step) {
+    case "askForAmount":
+      return handleAmount(chatId, text);
+    case "askForNote":
+      return handleNote(chatId, text);
   }
 });
 
-async function sendHelp(msg) {
+// --- ЕДИНЫЙ ОБРАБОТЧИК CALLBACK_QUERY ---
+
+bot.on("callback_query", async (callbackQuery) => {
+  const msg = callbackQuery.message;
   const chatId = msg.chat.id;
-  await logger.logCommand(chatId, "help");
+  const data = callbackQuery.data;
 
-  const helpText = `
-📚 *Справка по использованию:*
+  bot.answerCallbackQuery(callbackQuery.id);
+  await logger.logAction(chatId, "callback_query", { data });
 
-*Быстрые команды на клавиатуре:*
-📅 События - управление мероприятиями
-💰 Учет средств - финансовый учет
-👥 Команда - управление участниками
-📝 Задачи - управление задачами
-⚙️ Настройки - настройки приложения
-❓ Помощь - эта справка
+  const state = userDialogState[chatId];
+  if (data === "cancel_dialog") {
+    delete userDialogState[chatId];
+    return bot.editMessageText("Действие отменено.", {
+      chat_id: chatId,
+      message_id: msg.message_id,
+      reply_markup: null,
+    });
+  }
 
-*Быстрое добавление финансов:*
-Отправьте сообщение в формате:
-#событие ДД.ММ.ГГГГ +/-СУММА описание
+  if (!state) {
+    return bot.editMessageText(
+      "Этот диалог уже неактивен. Начните заново с /add.",
+      {
+        chat_id: chatId,
+        message_id: msg.message_id,
+        reply_markup: null,
+      }
+    );
+  }
 
-Например:
-#свадьба 01.05.2024 -5000 Предоплата за зал
+  switch (state.step) {
+    case "askForType":
+      if (data === "income" || data === "expense") {
+        state.type = data;
+        state.typeName = data === "income" ? "Доход" : "Расход";
+        await askForEvent(chatId);
+      }
+      break;
+    case "askForEvent":
+      if (data.startsWith("event_")) {
+        const eventId = data.split("_")[1];
+        if (eventId === "null") {
+          state.eventId = null;
+          state.eventName = "Без мероприятия";
+        } else {
+          state.eventId = parseInt(eventId, 10);
+          const button = msg.reply_markup.inline_keyboard
+            .flat()
+            .find((b) => b.callback_data === data);
+          state.eventName = button
+            ? button.text.replace(/^📅\s*/, "")
+            : "Неизвестное мероприятие";
+        }
+        await askForAccount(chatId);
+      }
+      break;
+    case "askForAccount":
+      if (data.startsWith("account_")) {
+        const accountId = data.split("_")[1];
+        state.accountId = parseInt(accountId, 10);
+        const button = msg.reply_markup.inline_keyboard
+          .flat()
+          .find((b) => b.callback_data === data);
+        state.accountName = button
+          ? button.text.replace(/^💳\s*/, "")
+          : "Неизвестный счет";
+        await askForCategory(chatId);
+      }
+      break;
+    case "askForCategory":
+      if (data.startsWith("category_")) {
+        const categoryId = data.split("_")[1];
+        state.categoryId = parseInt(categoryId, 10);
+        const button = msg.reply_markup.inline_keyboard
+          .flat()
+          .find((b) => b.callback_data === data);
+        state.categoryName = button
+          ? button.text.replace(/^📁\s*/, "")
+          : "Неизвестная категория";
+        await askForAmount(chatId);
+      }
+      break;
+    case "askForAmount":
+      if (data === "skip_note") {
+        state.note = null;
+        await showConfirmation(chatId);
+      }
+      break;
+    case "askForNote":
+      if (data === "skip_note") {
+        state.note = null;
+        await showConfirmation(chatId);
+      }
+      break;
+    case "confirm":
+      if (data === "confirm_save") {
+        await saveOperation(chatId);
+      }
+      break;
+  }
+});
 
-*Дополнительные команды:*
-/app - открыть веб-приложение
-/stats - показать вашу статистику
-/start - перезапустить бота
-/link <code> - привязать ваш Telegram к аккаунту в CRM
-`;
-  bot.sendMessage(chatId, helpText, { parse_mode: "Markdown" });
+// --- Функции диалога ---
+
+async function handleAddStart(msg) {
+  const chatId = msg.chat.id;
+  await logger.logCommand(chatId, "add_start");
+  startDialog(chatId);
 }
 
-// --- Логика привязки аккаунта ---
+async function askForEvent(chatId) {
+  const state = userDialogState[chatId];
+  if (!state) return;
 
-// 1. Обработка команды /link <code>
-bot.onText(/\/link (.+)/, async (msg, match) => {
-  const chatId = msg.chat.id;
-  const code = match[1]; // Код из сообщения
-  await handleLinkCommand(chatId, code);
-});
-
-// 2. Обработка сообщений, которые могут быть кодом привязки
-// Проверяем, что сообщение состоит из 6 символов (буквы и цифры)
-bot.onText(/^[A-Z0-9]{6}$/, async (msg) => {
-  // Исключаем обработку, если это была команда /link
-  if (msg.text.startsWith("/")) return;
-
-  const chatId = msg.chat.id;
-  const code = msg.text;
-  await handleLinkCommand(chatId, code);
-});
-
-// 3. Основная функция для привязки
-async function handleLinkCommand(chatId, code) {
-  await logger.logCommand(chatId, "link", { code });
+  state.step = "askForEvent";
+  logger.info(`[Dialog ${chatId}] Step -> askForEvent`);
 
   try {
-    // Отправляем запрос на наш бэкенд для верификации кода
-    const response = await axios.post(`${apiUrl}/telegram/link-account`, {
-      code: code,
-      chat_id: chatId,
+    const { data: response } = await axios.get(
+      `${apiUrl}/users/by-chat-id/${chatId}/events`
+    );
+
+    const events = response.data;
+    const keyboard = [];
+
+    if (events && events.length > 0) {
+      events.forEach((event) => {
+        const eventDate = new Date(event.date).toLocaleDateString("ru-RU");
+        keyboard.push([
+          {
+            text: `📅 ${event.project_name} (${eventDate})`,
+            callback_data: `event_${event.idevent}`,
+          },
+        ]);
+      });
+    }
+
+    // Add the "No Event" and "Cancel" buttons
+    keyboard.push([
+      { text: "📎 Без мероприятия", callback_data: "event_null" },
+    ]);
+    keyboard.push([{ text: "❌ Отмена", callback_data: "cancel_dialog" }]);
+
+    const options = {
+      reply_markup: JSON.stringify({
+        inline_keyboard: keyboard,
+      }),
+    };
+
+    bot.sendMessage(
+      chatId,
+      "К какому мероприятию относится операция?",
+      options
+    );
+  } catch (error) {
+    logger.error(`[Dialog ${chatId}] Failed to fetch events: ${error.message}`);
+    bot.sendMessage(
+      chatId,
+      "Не удалось загрузить список мероприятий. Попробуйте позже."
+    );
+    delete userDialogState[chatId]; // End dialog on error
+  }
+}
+
+async function askForAccount(chatId) {
+  const state = userDialogState[chatId];
+  if (!state) return;
+
+  state.step = "askForAccount";
+  logger.info(`[Dialog ${chatId}] Step -> askForAccount`);
+
+  try {
+    const { data: response } = await axios.get(`${apiUrl}/cashflow-accounts`, {
+      headers: { Authorization: `Bearer ${ADMIN_TOKEN}` }, // Assuming protected route
     });
 
-    if (response.data.success) {
+    const accounts = response.data;
+    if (!accounts || accounts.length === 0) {
       bot.sendMessage(
         chatId,
-        "✅ Отлично! Ваш Telegram-аккаунт успешно привязан к профилю в CRM."
+        "Не найдено ни одного счета для проведения операций. Пожалуйста, добавьте их в системе."
       );
-      await logger.logInfo(
-        `Account linked for chatId ${chatId} with code ${code}`
-      );
+      delete userDialogState[chatId];
+      return;
     }
+
+    const keyboard = accounts.map((acc) => [
+      {
+        text: `💳 ${acc.name}`,
+        callback_data: `account_${acc.idaccount_cashflow}`,
+      },
+    ]);
+    keyboard.push([{ text: "❌ Отмена", callback_data: "cancel_dialog" }]);
+
+    const options = {
+      reply_markup: JSON.stringify({
+        inline_keyboard: keyboard,
+      }),
+    };
+
+    bot.sendMessage(chatId, "С какого счета/кассы провести операцию?", options);
+  } catch (error) {
+    logger.error(
+      `[Dialog ${chatId}] Failed to fetch cashflow accounts: ${error.message}`
+    );
+    bot.sendMessage(
+      chatId,
+      "Не удалось загрузить список счетов. Попробуйте позже."
+    );
+    delete userDialogState[chatId];
+  }
+}
+
+async function askForCategory(chatId) {
+  const state = userDialogState[chatId];
+  if (!state) return;
+
+  state.step = "askForCategory";
+  logger.info(`[Dialog ${chatId}] Step -> askForCategory`);
+
+  try {
+    const { data: response } = await axios.get(
+      `${apiUrl}/cashflow-categories`,
+      {
+        headers: { Authorization: `Bearer ${ADMIN_TOKEN}` }, // Assuming protected route
+      }
+    );
+
+    const categories = response.data;
+    if (!categories || categories.length === 0) {
+      bot.sendMessage(
+        chatId,
+        "Не найдено ни одной категории. Пожалуйста, добавьте их в системе."
+      );
+      delete userDialogState[chatId];
+      return;
+    }
+
+    const keyboard = categories.map((cat) => [
+      {
+        text: `📁 ${cat.name}`,
+        callback_data: `category_${cat.idcategory_cashflow}`,
+      },
+    ]);
+    keyboard.push([{ text: "❌ Отмена", callback_data: "cancel_dialog" }]);
+
+    const options = {
+      reply_markup: JSON.stringify({
+        inline_keyboard: keyboard,
+      }),
+    };
+
+    bot.sendMessage(chatId, "Выберите категорию:", options);
+  } catch (error) {
+    logger.error(
+      `[Dialog ${chatId}] Failed to fetch cashflow categories: ${error.message}`
+    );
+    bot.sendMessage(
+      chatId,
+      "Не удалось загрузить список категорий. Попробуйте позже."
+    );
+    delete userDialogState[chatId];
+  }
+}
+
+async function askForAmount(chatId) {
+  const state = userDialogState[chatId];
+  if (!state) return;
+
+  state.step = "askForAmount";
+  logger.info(`[Dialog ${chatId}] Step -> askForAmount`);
+  bot.sendMessage(
+    chatId,
+    `Введите сумму ${
+      state.typeName === "Доход" ? "дохода" : "расхода"
+    } в рублях:`
+  );
+}
+
+async function handleAmount(chatId, text) {
+  const state = userDialogState[chatId];
+  const amount = parseFloat(text.replace(",", "."));
+  if (isNaN(amount) || amount <= 0)
+    return bot.sendMessage(
+      chatId,
+      "Неверная сумма. Пожалуйста, введите положительное число."
+    );
+  state.amount = amount;
+  await askForNote(chatId);
+}
+
+async function askForNote(chatId) {
+  const state = userDialogState[chatId];
+  if (!state) return;
+
+  state.step = "askForNote";
+  logger.info(`[Dialog ${chatId}] Step -> askForNote`);
+  bot.sendMessage(chatId, 'Добавьте комментарий или нажмите "Пропустить".', {
+    reply_markup: JSON.stringify({
+      inline_keyboard: [[{ text: "Пропустить", callback_data: "skip_note" }]],
+    }),
+  });
+}
+
+async function handleNote(chatId, text) {
+  const state = userDialogState[chatId];
+  state.note = text;
+  await showConfirmation(chatId);
+}
+
+async function showConfirmation(chatId) {
+  const state = userDialogState[chatId];
+  if (!state) return;
+
+  state.step = "confirm";
+  logger.info(`[Dialog ${chatId}] Step -> confirm`);
+
+  const confirmationText = `
+Проверьте данные:
+- **Тип:** ${state.typeName}
+- **Сумма:** ${state.amount} руб.
+- **Мероприятие:** ${state.eventName || "Не указано"}
+- **Счет/Касса:** ${state.accountName || "Не указан"}
+- **Категория:** ${state.categoryName || "Не указана"}
+- **Комментарий:** ${state.note || "Нет"}
+
+Всё верно?
+  `.trim();
+
+  const options = {
+    parse_mode: "Markdown",
+    reply_markup: JSON.stringify({
+      inline_keyboard: [
+        [
+          { text: "✅ Да, сохранить", callback_data: "confirm_save" },
+          { text: "✏️ Начать заново", callback_data: "start_over" },
+        ],
+      ],
+    }),
+  };
+
+  bot.sendMessage(chatId, confirmationText, options);
+}
+
+async function saveOperation(chatId) {
+  const state = userDialogState[chatId];
+  if (!state || !state.step === "confirm") return;
+
+  const payload = {
+    date: new Date().toISOString(),
+    account_cashflow_idaccount_cashflow: state.accountId,
+    category_cashflow_idcategory_cashflow: state.categoryId,
+    event_idevent: state.eventId, // Can be null
+    note: state.note,
+    income: state.type === "income" ? state.amount : 0,
+    expense: state.type === "expense" ? state.amount : 0,
+  };
+
+  logger.info(
+    `[Dialog ${chatId}] Saving operation with payload: ${JSON.stringify(
+      payload
+    )}`
+  );
+
+  try {
+    // We must use the admin token to perform this operation
+    await axios.post(`${apiUrl}/cashflow`, payload, {
+      headers: { Authorization: `Bearer ${ADMIN_TOKEN}` },
+    });
+
+    bot.sendMessage(chatId, "✅ Операция успешно сохранена!");
+  } catch (error) {
+    logger.error(
+      `[Dialog ${chatId}] Failed to save operation: ${
+        error.response ? JSON.stringify(error.response.data) : error.message
+      }`
+    );
+    bot.sendMessage(
+      chatId,
+      "❌ Не удалось сохранить операцию. Попробуйте снова или обратитесь к администратору."
+    );
+  } finally {
+    // Clean up state
+    delete userDialogState[chatId];
+  }
+}
+
+// --- Прочие функции ---
+
+function sendHelp(msg) {
+  logger.logCommand(msg.chat.id, "help");
+  const helpText = `*Справка по командам*\n\n/start - Перезапустить бота\n/app - Открыть веб-приложение\n/add - Добавить доход/расход\n/link <КОД> - Привязать Telegram-аккаунт`;
+  bot.sendMessage(msg.chat.id, helpText, { parse_mode: "Markdown" });
+}
+
+async function handleLinkCommand(chatId, code) {
+  await logger.logCommand(chatId, "link", { code });
+  try {
+    await axios.post(`${apiUrl}/telegram/link-account`, {
+      code,
+      chat_id: chatId,
+    });
+    bot.sendMessage(
+      chatId,
+      "✅ Отлично! Ваш Telegram-аккаунт успешно привязан."
+    );
   } catch (error) {
     let errorMessage = "Произошла неизвестная ошибка.";
     if (error.response) {
-      // Ошибки, которые вернул наш API
       switch (error.response.status) {
         case 404:
-          errorMessage =
-            "❌ Упс! Код не найден или срок его действия истек. Попробуйте получить новый код в настройках профиля.";
+          errorMessage = "❌ Код не найден или срок его действия истек.";
           break;
         case 409:
-          errorMessage =
-            "❌ Этот Telegram-аккаунт уже привязан к другому пользователю.";
+          errorMessage = "❌ Этот Telegram-аккаунт уже привязан.";
           break;
         default:
           errorMessage = `❌ Ошибка сервера: ${
@@ -169,338 +547,15 @@ async function handleLinkCommand(chatId, code) {
           }`;
       }
     } else {
-      // Сетевые или другие ошибки axios
-      errorMessage = "❌ Не удалось связаться с сервером для проверки кода.";
+      errorMessage = "❌ Не удалось связаться с сервером.";
     }
-
     bot.sendMessage(chatId, errorMessage);
-    await logger.logError(
-      `Failed to link account for chatId ${chatId}. Error: ${error.message}`
-    );
+    logger.logError(chatId, error, { context: "handleLinkCommand" });
   }
 }
 
-// --- Быстрое добавление финансов ---
-const financeRegex =
-  /^#(\S+)\s+(\d{2}\.\d{2}\.\d{4})\s+([+-]\d+(\.\d+)?)\s+(.*)$/i;
-
-bot.onText(financeRegex, async (msg, match) => {
-  const chatId = msg.chat.id;
-  await logger.logCommand(chatId, "quick_finance_add", { message: msg.text });
-
-  // 1. Проверить, привязан ли пользователь
-  let user;
-  try {
-    const response = await axios.get(`${apiUrl}/users/by-chat-id/${chatId}`);
-    user = response.data;
-    if (!user) {
-      bot.sendMessage(
-        chatId,
-        "❗️ Ваш Telegram не привязан к аккаунту. Используйте команду /link, чтобы привязать его."
-      );
-      return;
-    }
-  } catch (error) {
-    bot.sendMessage(
-      chatId,
-      "❗️ Не удалось проверить вашу авторизацию. Пожалуйста, попробуйте позже."
-    );
-    await logger.logError(
-      `Quick finance: Auth check failed for chatId ${chatId}. Error: ${error.message}`
-    );
-    return;
-  }
-
-  // 2. Распарсить данные из сообщения
-  const [, eventName, eventDateStr, amountStr, description] = match;
-  const amount = parseFloat(amountStr.replace(",", "."));
-  const [day, month, year] = eventDateStr.split(".");
-  // Формируем дату в формате ISO, чтобы избежать проблем с часовыми поясами на сервере
-  const eventDate = new Date(Date.UTC(year, month - 1, day));
-
-  try {
-    // 3. Найти событие по имени и дате
-    const eventResponse = await axios.post(`${apiUrl}/events/find`, {
-      name: eventName,
-      date: eventDate.toISOString().split("T")[0], // Отправляем YYYY-MM-DD
-      userId: user.id, // Отправляем ID пользователя для точности поиска
-    });
-
-    const event = eventResponse.data;
-    if (!event) {
-      bot.sendMessage(
-        chatId,
-        `❓ Не удалось найти событие с названием "${eventName}" на дату ${eventDateStr}. Проверьте данные и попробуйте снова.`
-      );
-      return;
-    }
-
-    // 4. Создать транзакцию
-    const cashflowPayload = {
-      event_idevent: event.idevent,
-      date: new Date().toISOString(), // Дата транзакции - текущая
-      note: description,
-      income: amount > 0 ? amount : 0,
-      expense: amount < 0 ? Math.abs(amount) : 0,
-      // Нужны значения по умолчанию или логика выбора для этих полей
-      account_cashflow_idaccount_cashflow: 1, // TODO: Уточнить, как выбирать счет
-      category_cashflow_idcategory_cashflow: 1, // TODO: Уточнить, как выбирать категорию
-      transaction: `Быстрое добавление от ${user.name}`,
-    };
-
-    await axios.post(`${apiUrl}/cashflow`, cashflowPayload);
-
-    // 5. Отправить подтверждение
-    const sign = amount > 0 ? "+" : "";
-    bot.sendMessage(
-      chatId,
-      `✅ Успешно добавлено: ${sign}${amount} руб. к событию "${event.name}" (${eventDateStr}).\nОписание: ${description}`
-    );
-    await logger.logInfo(
-      `Quick finance: Added ${amount} for event ${event.idevent} by user ${user.id}`
-    );
-  } catch (error) {
-    let errorMessage = "Произошла ошибка при добавлении финансов.";
-    if (error.response && error.response.data && error.response.data.message) {
-      errorMessage = `❌ Ошибка: ${error.response.data.message}`;
-    } else if (error.message.includes("404")) {
-      errorMessage = `❓ Не удалось найти событие с названием "${eventName}" на дату ${eventDateStr}. Проверьте данные и попробуйте снова.`;
-    }
-    bot.sendMessage(chatId, errorMessage);
-    await logger.logError(
-      `Quick finance: Failed for chatId ${chatId}. Error: ${error.message}`
-    );
-  }
-});
-
-// Обработка кнопок клавиатуры
-bot.on("message", async (msg) => {
-  const chatId = msg.chat.id;
-  const text = msg.text;
-
-  // Обработка кнопок основной клавиатуры
-  switch (text) {
-    case "📅 События":
-      await logger.logCommand(chatId, "events_button");
-      bot.sendMessage(
-        chatId,
-        "📅 *Управление событиями*\n\nВыберите действие:",
-        {
-          parse_mode: "Markdown",
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "🎯 Открыть события",
-                  web_app: { url: getWebAppUrl("/events") },
-                },
-              ],
-              [
-                {
-                  text: "📊 Статистика событий",
-                  callback_data: "events_stats",
-                },
-              ],
-              [{ text: "📝 Создать событие", callback_data: "create_event" }],
-            ],
-          },
-        }
-      );
-      break;
-
-    case "💰 Учет средств":
-      await logger.logCommand(chatId, "cash_button");
-      bot.sendMessage(chatId, "💰 *Учет средств*\n\nВыберите действие:", {
-        parse_mode: "Markdown",
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "📊 Открыть учет",
-                web_app: { url: getWebAppUrl("/cash") },
-              },
-            ],
-            [
-              {
-                text: "💳 Добавить транзакцию",
-                callback_data: "add_transaction",
-              },
-            ],
-            [{ text: "📈 Финансовый отчет", callback_data: "finance_report" }],
-          ],
-        },
-      });
-      break;
-
-    case "👥 Команда":
-      await logger.logCommand(chatId, "team_button");
-      bot.sendMessage(
-        chatId,
-        "👥 *Управление командой*\n\nВыберите действие:",
-        {
-          parse_mode: "Markdown",
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "👥 Открыть список",
-                  web_app: { url: getWebAppUrl("/members") },
-                },
-              ],
-              [{ text: "➕ Добавить участника", callback_data: "add_member" }],
-              [{ text: "📊 Статистика команды", callback_data: "team_stats" }],
-            ],
-          },
-        }
-      );
-      break;
-
-    case "📝 Задачи":
-      await logger.logCommand(chatId, "todo_button");
-      bot.sendMessage(
-        chatId,
-        "📝 *Управление задачами*\n\nВыберите действие:",
-        {
-          parse_mode: "Markdown",
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "📋 Открыть задачи",
-                  web_app: { url: getWebAppUrl("/todo") },
-                },
-              ],
-              [{ text: "➕ Добавить задачу", callback_data: "add_todo" }],
-              [{ text: "📊 Прогресс", callback_data: "todo_progress" }],
-            ],
-          },
-        }
-      );
-      break;
-
-    case "⚙️ Настройки":
-      await logger.logCommand(chatId, "settings_button");
-      bot.sendMessage(chatId, "⚙️ *Настройки*\n\nВыберите действие:", {
-        parse_mode: "Markdown",
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "⚙️ Открыть настройки",
-                web_app: { url: getWebAppUrl("/settings") },
-              },
-            ],
-            [{ text: "🔔 Уведомления", callback_data: "notifications" }],
-            [{ text: "👤 Профиль", callback_data: "profile" }],
-          ],
-        },
-      });
-      break;
-  }
-});
-
-// Обработка быстрого добавления финансов
-bot.on("message", async (msg) => {
-  const chatId = msg.chat.id;
-  const text = msg.text;
-
-  // Проверяем формат сообщения: #событие дата сумма описание
-  const match = text?.match(
-    /^#(\w+)\s+(\d{2}\.\d{2}\.\d{4})\s+([+-]\d+)\s+(.+)$/
-  );
-
-  if (match) {
-    const [, eventTag, date, amount, description] = match;
-
-    try {
-      const transaction = {
-        eventTag,
-        date,
-        amount: parseInt(amount),
-        description,
-        timestamp: new Date(),
-        chatId,
-      };
-
-      // Логируем транзакцию
-      await logger.logTransaction(chatId, transaction);
-
-      // Отправляем подробное подтверждение
-      const amountText = amount.startsWith("+")
-        ? `доход ${amount}`
-        : `расход ${amount.substring(1)}`;
-      const confirmationMessage = `
-✅ *Транзакция успешно записана*
-
-💰 Сумма: ${amountText} руб.
-📅 Событие: #${eventTag}
-📝 Описание: ${description}
-📆 Дата: ${date}
-⏱ Время записи: ${new Date().toLocaleTimeString()}
-
-_Транзакция сохранена в системе и доступна в разделе "Учет средств"_
-`;
-
-      bot.sendMessage(chatId, confirmationMessage, {
-        parse_mode: "Markdown",
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: "📊 Открыть учет средств",
-                web_app: { url: getWebAppUrl("/cash") },
-              },
-            ],
-            [{ text: "💰 Добавить еще", callback_data: "add_transaction" }],
-          ],
-        },
-      });
-    } catch (error) {
-      await logger.logError(chatId, error, {
-        type: "transaction",
-        data: { eventTag, date, amount, description },
-      });
-      console.error("Ошибка при сохранении транзакции:", error);
-      bot.sendMessage(
-        chatId,
-        "❌ Произошла ошибка при сохранении транзакции. Пожалуйста, проверьте формат сообщения и попробуйте снова.\n\nФормат: #событие ДД.ММ.ГГГГ +/-СУММА описание"
-      );
-    }
-  }
-});
-
-// Обработка callback_query для кнопок
-bot.on("callback_query", async (query) => {
-  const chatId = query.message.chat.id;
-  const action = query.data;
-
-  await logger.logAction(chatId, "button_click", { button: action });
-
-  // Отвечаем на все callback_query, чтобы убрать "часики" на кнопке
-  bot.answerCallbackQuery(query.id);
-
-  switch (action) {
-    case "add_transaction":
-      bot.sendMessage(
-        chatId,
-        "💰 *Добавление новой транзакции*\n\nОтправьте сообщение в формате:\n#событие ДД.ММ.ГГГГ +/-СУММА описание\n\nНапример:\n#свадьба 01.05.2024 -5000 Предоплата за зал",
-        { parse_mode: "Markdown" }
-      );
-      break;
-    // Здесь можно добавить обработку других callback_query
-  }
-});
-
-// Отслеживание открытия веб-приложения
-bot.on("web_app_data", async (msg) => {
-  const chatId = msg.chat.id;
-  await logger.logWebAppOpen(chatId, msg.web_app_data.data);
-});
-
-// Обработка ошибок
-bot.on("polling_error", async (error) => {
-  console.log(error);
-  await logger.logError("system", error, { type: "polling_error" });
+bot.on("polling_error", (error) => {
+  logger.logError("system", error, { type: "polling_error" });
 });
 
 console.log("Бот запущен...");
