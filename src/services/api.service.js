@@ -124,6 +124,15 @@ const apiService = {
   getVenues() {
     return apiClient.get("/venues");
   },
+  createVenue(venue) {
+    return apiClient.post("/venues", venue);
+  },
+  updateVenue(id, venue) {
+    return apiClient.put(`/venues/${id}`, venue);
+  },
+  deleteVenue(id) {
+    return apiClient.delete(`/venues/${id}`);
+  },
   getCustomers() {
     return apiClient.get("/customers");
   },
