@@ -128,26 +128,38 @@
           @submit.prevent="saveUser"
           class="grid grid-cols-1 sm:grid-cols-2 gap-6"
         >
+          <!-- Логин -->
           <div>
-            <label for="telegram_id" class="label-form">Telegram ID</label>
-            <input
-              type="number"
-              id="telegram_id"
-              v-model.number="currentUser.telegram_id"
-              required
-              class="input-field"
-            />
-          </div>
-          <div>
-            <label for="username" class="label-form">Username (Telegram)</label>
+            <label for="username" class="label-form">Логин</label>
             <input
               type="text"
               id="username"
               v-model="currentUser.username"
+              :disabled="isEditMode"
               required
               class="input-field"
+              :class="{ 'bg-gray-200': isEditMode }"
+              autocomplete="username"
             />
           </div>
+
+          <!-- Пароль -->
+          <div>
+            <label for="password" class="label-form">Пароль</label>
+            <input
+              type="password"
+              id="password"
+              v-model="currentUser.password"
+              :required="!isEditMode"
+              class="input-field"
+              :placeholder="
+                isEditMode ? 'Оставьте пустым, если не меняете' : ''
+              "
+              autocomplete="new-password"
+            />
+          </div>
+
+          <!-- Имя -->
           <div>
             <label for="first_name" class="label-form">Имя</label>
             <input
@@ -158,6 +170,7 @@
               class="input-field"
             />
           </div>
+          <!-- Фамилия -->
           <div>
             <label for="last_name" class="label-form">Фамилия</label>
             <input
@@ -167,26 +180,29 @@
               class="input-field"
             />
           </div>
-          <div v-if="!isEditMode">
-            <label for="password" class="label-form">Пароль</label>
-            <input
-              type="password"
-              id="password"
-              v-model="currentUser.password"
-              :required="!isEditMode"
-              class="input-field"
-              placeholder="Оставьте пустым, чтобы не менять"
-            />
-          </div>
           <div>
             <label for="role" class="label-form">Роль</label>
             <select id="role" v-model="currentUser.role" class="input-field">
               <option value="" disabled>Выберите роль</option>
-              <option value="Администратор">Администратор</option>
-              <option value="Менеджер">Менеджер</option>
-              <option value="Сотрудник">Сотрудник</option>
+              <option value="admin">Администратор</option>
+              <option value="manager">Менеджер</option>
+              <option value="user">Сотрудник</option>
             </select>
           </div>
+
+          <!-- Telegram ID -->
+          <div>
+            <label for="telegram_id" class="label-form"
+              >Telegram ID (необязательно)</label
+            >
+            <input
+              type="number"
+              id="telegram_id"
+              v-model.number="currentUser.telegram_id"
+              class="input-field"
+            />
+          </div>
+
           <div class="sm:col-span-2 mt-6 flex justify-end space-x-3">
             <button type="button" @click="closeModal" class="btn-secondary">
               Отмена
@@ -219,12 +235,12 @@ const currentPage = ref(1);
 const authStore = useAuthStore();
 
 const defaultUser = {
-  telegram_id: null,
+  id: null,
   username: "",
+  password: "",
   first_name: "",
   last_name: "",
   role: "Сотрудник",
-  password: "",
 };
 
 async function loadUsers() {
@@ -235,8 +251,7 @@ async function loadUsers() {
     users.value = response.data.data || [];
   } catch (error) {
     console.error("Failed to load users:", error);
-    loadingError.value =
-      "Произошла критическая ошибка при загрузке пользователей.";
+    loadingError.value = "Ошибка при загрузке пользователей.";
   } finally {
     isLoading.value = false;
   }
@@ -282,7 +297,7 @@ function openAddModal() {
 
 function openEditModal(user) {
   isEditMode.value = true;
-  currentUser.value = { ...user };
+  currentUser.value = { ...user, password: "" };
   isModalOpen.value = true;
 }
 
@@ -292,40 +307,35 @@ function closeModal() {
 }
 
 async function saveUser() {
+  NProgress.start();
   try {
-    let response;
     if (isEditMode.value) {
-      response = await apiService.updateUser(
-        currentUser.value.id,
-        currentUser.value
-      );
+      const userData = { ...currentUser.value };
+      if (!userData.password) {
+        delete userData.password;
+      }
+      await apiService.updateUser(userData.id, userData);
     } else {
-      response = await apiService.createUser(currentUser.value);
+      await apiService.createUser(currentUser.value);
     }
-
-    if (response.data.success) {
-      closeModal();
-      loadUsers();
-    } else {
-      alert(
-        `Ошибка: ${
-          response.data.message || "Не удалось сохранить пользователя."
-        }`
-      );
-    }
+    closeModal();
+    loadUsers();
   } catch (error) {
-    console.error("Error saving user:", error);
+    console.error("Failed to save user:", error);
     alert("Произошла критическая ошибка при сохранении пользователя.");
+  } finally {
+    NProgress.done();
   }
 }
 
 function confirmDeleteItem(id) {
   if (confirm("Вы уверены, что хотите удалить этого пользователя?")) {
-    deleteItem(id);
+    deleteUser(id);
   }
 }
 
-async function deleteItem(id) {
+async function deleteUser(id) {
+  NProgress.start();
   try {
     const response = await apiService.deleteUser(id);
     if (response.data.success) {
@@ -340,6 +350,8 @@ async function deleteItem(id) {
   } catch (error) {
     console.error("Error deleting user:", error);
     alert("Произошла критическая ошибка при удалении пользователя.");
+  } finally {
+    NProgress.done();
   }
 }
 
@@ -357,11 +369,11 @@ function formatDate(dateString) {
 
 function getRoleClass(role) {
   const roleClasses = {
-    Администратор: "bg-red-100 text-red-800",
-    Менеджер: "bg-yellow-100 text-yellow-800",
-    Сотрудник: "bg-green-100 text-green-800",
+    admin: "bg-red-200 text-red-800",
+    manager: "bg-yellow-200 text-yellow-800",
+    user: "bg-blue-200 text-blue-800",
   };
-  return roleClasses[role] || "bg-gray-100 text-gray-800";
+  return roleClasses[role] || "bg-gray-200 text-gray-800";
 }
 </script>
 

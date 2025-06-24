@@ -1,174 +1,166 @@
 import axios from "axios";
+import { useAuthStore } from "@/store/auth.store";
 import NProgress from "nprogress";
 
-// Динамический импорт хранилища auth.store во избежание циклических зависимостей при запуске.
-// Это позволяет api.service и auth.store импортировать друг друга.
-const getAuthStore = async () => {
-  const { useAuthStore } = await import("@/store/auth.store");
-  return useAuthStore();
-};
-
-// Создаем экземпляр axios с базовой конфигурацией.
 const apiClient = axios.create({
+<<<<<<< HEAD
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000/api", // Базовый URL для всех запросов
+=======
+  baseURL: "http://localhost:3000/api",
+>>>>>>> 3f5793b46a767534e53115904d978d7b876585f2
   headers: {
-    "Content-Type": "application/json", // Тип контента по умолчанию
+    "Content-Type": "application/json",
   },
 });
 
-// --- Перехватчики (Interceptors) ---
+apiClient.interceptors.request.use(
+  (config) => {
+    NProgress.start();
+    const authStore = useAuthStore();
+    if (authStore.accessToken) {
+      config.headers["Authorization"] = `Bearer ${authStore.accessToken}`;
+    }
+    return config;
+  },
+  (error) => {
+    NProgress.done();
+    return Promise.reject(error);
+  }
+);
 
-// Перехватчик запросов для отображения индикатора загрузки (NProgress).
-apiClient.interceptors.request.use((config) => {
-  NProgress.start(); // Показать индикатор
-  return config;
-});
-
-// Перехватчик ответов для обработки результатов и ошибок.
 apiClient.interceptors.response.use(
   (response) => {
-    NProgress.done(); // Скрыть индикатор при успешном ответе
+    NProgress.done();
     return response;
   },
-  async (error) => {
-    NProgress.done(); // Скрыть индикатор при ошибке
-    // Если сервер вернул ошибку 401 (Unauthorized) или 403 (Forbidden),
-    // и это не запрос на страницу входа, то выполняем выход пользователя.
+  (error) => {
+    NProgress.done();
     if (
       error.response &&
       (error.response.status === 401 || error.response.status === 403) &&
       !error.config.url.includes("/auth/login")
     ) {
-      const authStore = await getAuthStore();
-      authStore.logout(); // Вызываем action для выхода
+      const authStore = useAuthStore();
+      authStore.logout();
     }
-    // Возвращаем ошибку, чтобы она могла быть обработана дальше (например, в .catch()).
     return Promise.reject(error);
   }
 );
 
-/**
- * Объект `apiService` предоставляет удобные методы для взаимодействия с API.
- * Каждый метод соответствует определенному эндпоинту на сервере.
- */
-const apiService = {
-  // --- Аутентификация ---
-  /**
-   * Отправляет учетные данные на сервер для входа.
-   * @param {object} credentials - Объект с username и password.
-   * @returns {Promise} - Промис с ответом от сервера.
-   */
+class ApiService {
+  get(resource, params) {
+    return apiClient.get(resource, { params });
+  }
+
+  post(resource, data) {
+    return apiClient.post(resource, data);
+  }
+
+  put(resource, data) {
+    return apiClient.put(resource, data);
+  }
+
+  delete(resource) {
+    return apiClient.delete(resource);
+  }
+
+  // Auth & Users
   login(credentials) {
-    return apiClient.post("/auth/login", credentials);
-  },
-  /**
-   * Устанавливает заголовок Authorization для всех последующих запросов.
-   * @param {string} token - JWT токен.
-   */
-  setAuthHeader(token) {
-    apiClient.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-  },
-  /**
-   * Удаляет заголовок Authorization из заголовков запросов.
-   */
-  removeAuthHeader() {
-    delete apiClient.defaults.headers.common["Authorization"];
-  },
-
-  /**
-   * Получает данные текущего аутентифицированного пользователя.
-   * @returns {Promise} - Промис с данными пользователя.
-   */
+    return this.post("auth/login", credentials);
+  }
   getMe() {
-    return apiClient.get("/auth/me");
-  },
-
-  // --- Статистика ---
-  getStatistics() {
-    return apiClient.get("/statistics");
-  },
-  getUpcomingEvents() {
-    return apiClient.get("/events/upcoming");
-  },
-
-  // --- Мероприятия (Events) ---
-  getEvents() {
-    return apiClient.get("/events");
-  },
-  getEvent(id) {
-    return apiClient.get(`/events/${id}`);
-  },
-  createEvent(event) {
-    return apiClient.post("/events", event);
-  },
-  updateEvent(id, event) {
-    return apiClient.put(`/events/${id}`, event);
-  },
-  deleteEvent(id) {
-    return apiClient.delete(`/events/${id}`);
-  },
-
-  // --- Справочники ---
-  getEventCategories() {
-    return apiClient.get("/event-categories");
-  },
-  getVenues() {
-    return apiClient.get("/venues");
-  },
-  getCustomers() {
-    return apiClient.get("/customers");
-  },
-  getParticipants() {
-    return apiClient.get("/participants");
-  },
-  getTeamMembers() {
-    return this.getParticipants();
-  },
+    return this.get("auth/me");
+  }
   getUsers() {
-    return apiClient.get("/users");
-  },
+    return this.get("users");
+  }
+  createUser(data) {
+    return this.post("users", data);
+  }
+  updateUser(id, data) {
+    return this.put(`users/${id}`, data);
+  }
+  deleteUser(id) {
+    return this.delete(`users/${id}`);
+  }
+
+  // Statistics & Dashboard
+  getStatistics() {
+    return this.get("statistics");
+  }
+  getUpcomingEvents() {
+    return this.get("events/upcoming");
+  }
+
+  // Events
+  getEvents() {
+    return this.get("events");
+  }
+  getEvent(id) {
+    return this.get(`/events/${id}`);
+  }
+  createEvent(event) {
+    return this.post("events", event);
+  }
+  updateEvent(id, event) {
+    return this.put(`/events/${id}`, event);
+  }
+  deleteEvent(id) {
+    return this.delete(`/events/${id}`);
+  }
+
+  // Dictionaries
+  getEventCategories() {
+    return this.get("event-categories");
+  }
+  getVenues() {
+    return this.get("venues");
+  }
+  getCustomers() {
+    return this.get("customers");
+  }
   getContacts() {
-    return apiClient.get("/contacts");
-  },
+    return this.get("contacts");
+  }
 
-  // --- Учет средств (Cashflow) ---
-  getCashflow(eventId = null) {
-    const params = eventId ? { eventId } : {};
-    return apiClient.get("/cashflow", { params });
-  },
+  // Cashflow
+  getCashflow(params) {
+    return this.get("cashflow", params);
+  }
   createCashflow(transaction) {
-    return apiClient.post("/cashflow", transaction);
-  },
+    return this.post("cashflow", transaction);
+  }
   updateCashflow(id, transaction) {
-    return apiClient.put(`/cashflow/${id}`, transaction);
-  },
+    return this.put(`cashflow/${id}`, transaction);
+  }
   deleteCashflow(id) {
-    return apiClient.delete(`/cashflow/${id}`);
-  },
+    return this.delete(`cashflow/${id}`);
+  }
   getCashflowAccounts() {
-    return apiClient.get("/cashflow-accounts");
-  },
+    return this.get("cashflow-accounts");
+  }
   getCashflowCategories() {
-    return apiClient.get("/cashflow-categories");
-  },
+    return this.get("cashflow-categories");
+  }
 
-  // --- Шаблоны документов ---
+  // Document Templates
   getDocumentTemplates() {
-    return apiClient.get("/document-templates");
-  },
+    return this.get("document-templates");
+  }
   getDocumentTemplate(id) {
-    return apiClient.get(`/document-templates/${id}`);
-  },
+    return this.get(`document-templates/${id}`);
+  }
   createDocumentTemplate(template) {
-    return apiClient.post("/document-templates", template);
-  },
+    return this.post("document-templates", template);
+  }
   updateDocumentTemplate(id, template) {
-    return apiClient.put(`/document-templates/${id}`, template);
-  },
+    return this.put(`document-templates/${id}`, template);
+  }
   deleteDocumentTemplate(id) {
-    return apiClient.delete(`/document-templates/${id}`);
-  },
+    return this.delete(`document-templates/${id}`);
+  }
 
+<<<<<<< HEAD
   // --- Документы ---
   getDocuments() {
     return apiClient.get("/documents");
@@ -182,56 +174,48 @@ const apiService = {
   updateDocument(id, document) {
     return apiClient.put(`/documents/${id}`, document);
   },
+=======
+  // Documents
+>>>>>>> 3f5793b46a767534e53115904d978d7b876585f2
   getEventDocuments(eventId) {
-    return apiClient.get(`/events/${eventId}/documents`);
-  },
-  generateDocument(eventId, templateId) {
-    return apiClient.post("/documents/generate", {
-      eventId: eventId,
-      templateId: templateId,
-    });
-  },
-  downloadDocument(documentId) {
-    return apiClient.get(`/documents/${documentId}/download`, {
-      responseType: "blob",
-    });
-  },
-  deleteDocument(documentId) {
-    return apiClient.delete(`/documents/${documentId}`);
-  },
+    return this.get(`events/${eventId}/documents`);
+  }
+  generateDocument(data) {
+    return this.post("documents/generate", data);
+  }
+  downloadDocument(id) {
+    return apiClient.get(`documents/${id}/download`, { responseType: "blob" });
+  }
+  deleteDocument(id) {
+    return this.delete(`documents/${id}`);
+  }
 
-  // --- Задачи (Todo List) ---
+  // Tasks
   getTasksForEvent(eventId) {
-    return apiClient.get(`/events/${eventId}/tasks`);
-  },
+    return this.get(`events/${eventId}/tasks`);
+  }
   createTask(task) {
-    return apiClient.post("/tasks", task);
-  },
+    return this.post("tasks", task);
+  }
   updateTask(id, task) {
-    return apiClient.put(`/tasks/${id}`, task);
-  },
+    return this.put(`tasks/${id}`, task);
+  }
   deleteTask(id) {
-    return apiClient.delete(`/tasks/${id}`);
-  },
+    return this.delete(`tasks/${id}`);
+  }
 
-  // --- Реквизиты компании ---
+  // Company Details
   getCompanyDetails() {
-    return apiClient.get("/company-details");
-  },
-  createCompanyDetails(details) {
-    return apiClient.post("/company-details", details);
-  },
-  updateCompanyDetails(id, details) {
-    return apiClient.put(`/company-details/${id}`, details);
-  },
-  deleteCompanyDetails(id) {
-    return apiClient.delete(`/company-details/${id}`);
-  },
+    return this.get("company-details");
+  }
+  updateCompanyDetails(data) {
+    return this.put("company-details", data);
+  }
 
-  // --- Привязка Telegram ---
+  // Telegram link
   generateLinkCode() {
-    return apiClient.post("/users/me/generate-link-code");
-  },
-};
+    return this.post("users/me/generate-link-code");
+  }
+}
 
-export default apiService;
+export default new ApiService();
