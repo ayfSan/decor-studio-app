@@ -138,6 +138,15 @@ const apiService = {
   getCustomers() {
     return apiClient.get("/customers");
   },
+  createCustomer(customer) {
+    return apiClient.post("/customers", customer);
+  },
+  updateCustomer(id, customer) {
+    return apiClient.put(`/customers/${id}`, customer);
+  },
+  deleteCustomer(id) {
+    return apiClient.delete(`/customers/${id}`);
+  },
   getParticipants() {
     return apiClient.get("/participants");
   },
