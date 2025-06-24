@@ -177,6 +177,15 @@ const apiService = {
   getCashflowAccounts() {
     return apiClient.get("/cashflow-accounts");
   },
+  createAccountCashflow(account) {
+    return apiClient.post("/cashflow-accounts", account);
+  },
+  updateAccountCashflow(id, account) {
+    return apiClient.put(`/cashflow-accounts/${id}`, account);
+  },
+  deleteAccountCashflow(id) {
+    return apiClient.delete(`/cashflow-accounts/${id}`);
+  },
   getCashflowCategories() {
     return apiClient.get("/cashflow-categories");
   },
