@@ -240,6 +240,31 @@ app.post(
   }
 );
 
+// Get events for the currently authenticated user
+app.get("/api/users/me/events", authenticateToken, async (req, res) => {
+  const userId = req.user.id;
+  try {
+    const [events] = await pool.query(
+      `
+      SELECT e.*
+      FROM event e
+      JOIN event_user eu ON e.idevent = eu.event_idevent
+      WHERE eu.user_id = ?
+      ORDER BY e.date ASC
+    `,
+      [userId]
+    );
+    res.json({ success: true, data: events });
+  } catch (error) {
+    console.error("Failed to fetch user events:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching user events.",
+      error: error.message,
+    });
+  }
+});
+
 // Get all users
 app.get("/api/users", authenticateToken, async (req, res) => {
   try {

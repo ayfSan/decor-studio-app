@@ -1,8 +1,11 @@
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
 import apiService from "@/services/api.service.js";
 import { formatCurrency, formatDate } from "@/utils/formatters.js";
+import FullCalendar from "@fullcalendar/vue3";
+import dayGridPlugin from "@fullcalendar/daygrid";
+import interactionPlugin from "@fullcalendar/interaction";
 
 const router = useRouter();
 
@@ -13,6 +16,7 @@ const stats = ref({
   completedThisMonth: 0,
 });
 const upcomingEvents = ref([]);
+const calendarEvents = ref([]); // Для событий календаря
 const isLoading = ref(true);
 const loadingError = ref(null);
 
@@ -35,18 +39,54 @@ const accountsForModal = ref([]);
 const categoriesForModal = ref([]);
 const eventsListForModal = ref([]);
 
+// --- Calendar Options ---
+const calendarOptions = computed(() => ({
+  plugins: [dayGridPlugin, interactionPlugin],
+  initialView: "dayGridMonth",
+  headerToolbar: {
+    left: "prev,next today",
+    center: "title",
+    right: "dayGridMonth,dayGridWeek",
+  },
+  events: calendarEvents.value,
+  locale: "ru",
+  buttonText: {
+    today: "Сегодня",
+    month: "Месяц",
+    week: "Неделя",
+  },
+  eventClick: (info) => {
+    router.push({
+      name: "EventDetail",
+      params: { eventId: info.event.id },
+    });
+  },
+  height: "auto",
+}));
+
 // --- Data Loading ---
 async function loadDashboardData() {
   isLoading.value = true;
   loadingError.value = null;
   try {
-    const [statsRes, upcomingEventsRes] = await Promise.all([
+    const [statsRes, upcomingEventsRes, myEventsRes] = await Promise.all([
       apiService.getStatistics(),
       apiService.getUpcomingEvents(),
+      apiService.getMyEvents(), // Загружаем события для календаря
     ]);
 
     stats.value = statsRes.data.data;
     upcomingEvents.value = upcomingEventsRes.data.data;
+
+    // Форматируем события для FullCalendar
+    if (myEventsRes.data.success) {
+      calendarEvents.value = myEventsRes.data.data.map((event) => ({
+        id: event.idevent,
+        title: event.project_name,
+        start: event.date,
+        allDay: false, // Можно сделать на весь день, если время не важно
+      }));
+    }
   } catch (error) {
     console.error("Failed to load dashboard data:", error);
     loadingError.value =
@@ -135,83 +175,94 @@ function navigateToNewMember() {
       </button>
     </div>
 
-    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      <!-- Статистика -->
-      <div class="bg-white rounded-lg p-6 shadow-sm">
-        <h2 class="text-lg font-medium mb-4">Общая статистика</h2>
-        <div class="space-y-3">
-          <div class="flex justify-between items-center">
-            <span class="text-gray-600">Активные мероприятия</span>
-            <span class="font-medium text-lg text-primary-600">{{
-              stats.activeEvents
-            }}</span>
-          </div>
-          <div class="flex justify-between items-center">
-            <span class="text-gray-600">Участники команды</span>
-            <span class="font-medium text-lg text-primary-600">{{
-              stats.teamMembers
-            }}</span>
-          </div>
-          <div class="flex justify-between items-center">
-            <span class="text-gray-600">Завершено в этом месяце</span>
-            <span class="font-medium text-lg text-primary-600">{{
-              stats.completedThisMonth
-            }}</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Ближайшие мероприятия -->
-      <div class="bg-white rounded-lg p-6 shadow-sm">
-        <h2 class="text-lg font-medium mb-4">Ближайшие мероприятия</h2>
-        <div v-if="upcomingEvents.length > 0" class="space-y-4">
-          <div
-            v-for="event in upcomingEvents"
-            :key="event.idevent"
-            class="border-b pb-3 last:border-b-0"
-          >
-            <router-link
-              :to="{ name: 'EventDetail', params: { eventId: event.idevent } }"
-              class="font-medium hover:text-primary-600 hover:underline"
-            >
-              {{ event.project_name || "Мероприятие без названия" }}
-            </router-link>
-            <div class="text-sm text-gray-600 mt-1">
-              {{ formatDate(event.date) }}
+    <div v-else>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        <!-- Статистика -->
+        <div class="bg-white rounded-lg p-6 shadow-sm">
+          <h2 class="text-lg font-medium mb-4">Общая статистика</h2>
+          <div class="space-y-3">
+            <div class="flex justify-between items-center">
+              <span class="text-gray-600">Активные мероприятия</span>
+              <span class="font-medium text-lg text-primary-600">{{
+                stats.activeEvents
+              }}</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-gray-600">Участники команды</span>
+              <span class="font-medium text-lg text-primary-600">{{
+                stats.teamMembers
+              }}</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-gray-600">Завершено в этом месяце</span>
+              <span class="font-medium text-lg text-primary-600">{{
+                stats.completedThisMonth
+              }}</span>
             </div>
           </div>
         </div>
-        <p v-else class="text-sm text-gray-500 mt-4">
-          Нет предстоящих мероприятий.
-        </p>
+
+        <!-- Ближайшие мероприятия -->
+        <div class="bg-white rounded-lg p-6 shadow-sm">
+          <h2 class="text-lg font-medium mb-4">Ближайшие мероприятия</h2>
+          <div v-if="upcomingEvents.length > 0" class="space-y-4">
+            <div
+              v-for="event in upcomingEvents"
+              :key="event.idevent"
+              class="border-b pb-3 last:border-b-0"
+            >
+              <router-link
+                :to="{
+                  name: 'EventDetail',
+                  params: { eventId: event.idevent },
+                }"
+                class="font-medium hover:text-primary-600 hover:underline"
+              >
+                {{ event.project_name || "Мероприятие без названия" }}
+              </router-link>
+              <div class="text-sm text-gray-600 mt-1">
+                {{ formatDate(event.date) }}
+              </div>
+            </div>
+          </div>
+          <p v-else class="text-sm text-gray-500 mt-4">
+            Нет предстоящих мероприятий.
+          </p>
+        </div>
+
+        <!-- Быстрые действия -->
+        <div class="bg-white rounded-lg p-6 shadow-sm">
+          <h2 class="text-lg font-medium mb-4">Быстрые действия</h2>
+          <div class="space-y-3">
+            <button
+              @click="navigateToNewEvent"
+              class="w-full py-2 px-4 bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100 transition-colors duration-200 text-left flex items-center"
+            >
+              <span class="material-symbols-outlined mr-2">add_circle</span>
+              Новое мероприятие
+            </button>
+            <button
+              @click="openAddTransactionModal"
+              class="w-full py-2 px-4 bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100 transition-colors duration-200 text-left flex items-center"
+            >
+              <span class="material-symbols-outlined mr-2">payments</span>
+              Добавить транзакцию
+            </button>
+            <button
+              @click="navigateToNewMember"
+              class="w-full py-2 px-4 bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100 transition-colors duration-200 text-left flex items-center"
+            >
+              <span class="material-symbols-outlined mr-2">person_add</span>
+              Добавить участника
+            </button>
+          </div>
+        </div>
       </div>
 
-      <!-- Быстрые действия -->
+      <!-- Календарь -->
       <div class="bg-white rounded-lg p-6 shadow-sm">
-        <h2 class="text-lg font-medium mb-4">Быстрые действия</h2>
-        <div class="space-y-3">
-          <button
-            @click="navigateToNewEvent"
-            class="w-full py-2 px-4 bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100 transition-colors duration-200 text-left flex items-center"
-          >
-            <span class="material-symbols-outlined mr-2">add_circle</span>
-            Новое мероприятие
-          </button>
-          <button
-            @click="openAddTransactionModal"
-            class="w-full py-2 px-4 bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100 transition-colors duration-200 text-left flex items-center"
-          >
-            <span class="material-symbols-outlined mr-2">payments</span>
-            Добавить транзакцию
-          </button>
-          <button
-            @click="navigateToNewMember"
-            class="w-full py-2 px-4 bg-primary-50 text-primary-600 rounded-lg hover:bg-primary-100 transition-colors duration-200 text-left flex items-center"
-          >
-            <span class="material-symbols-outlined mr-2">person_add</span>
-            Добавить участника
-          </button>
-        </div>
+        <h2 class="text-xl font-semibold mb-4">Мой календарь мероприятий</h2>
+        <FullCalendar :options="calendarOptions" />
       </div>
     </div>
 
@@ -371,5 +422,19 @@ function navigateToNewMember() {
 }
 .btn-form-secondary {
   @apply bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-lg shadow-sm transition-colors duration-200;
+}
+
+:deep(.fc-event) {
+  cursor: pointer;
+  border: 1px solid theme("colors.primary.600");
+  background-color: theme("colors.primary.100");
+  color: theme("colors.primary.700");
+}
+:deep(.fc-event:hover) {
+  background-color: theme("colors.primary.100");
+  opacity: 0.8;
+}
+:deep(.fc-toolbar-title) {
+  font-size: 1.25rem;
 }
 </style>

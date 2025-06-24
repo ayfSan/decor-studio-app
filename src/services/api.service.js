@@ -297,6 +297,11 @@ const apiService = {
   generateLinkCode() {
     return apiClient.post("/users/me/generate-link-code");
   },
+
+  // --- Календарь ---
+  getMyEvents() {
+    return apiClient.get("/users/me/events");
+  },
 };
 
 export default apiService;
