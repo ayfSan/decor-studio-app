@@ -180,6 +180,15 @@ const apiService = {
   getCashflowCategories() {
     return apiClient.get("/cashflow-categories");
   },
+  createCategoryCashflow(category) {
+    return apiClient.post("/cashflow-categories", category);
+  },
+  updateCategoryCashflow(id, category) {
+    return apiClient.put(`/cashflow-categories/${id}`, category);
+  },
+  deleteCategoryCashflow(id) {
+    return apiClient.delete(`/cashflow-categories/${id}`);
+  },
 
   // --- Шаблоны документов ---
   getDocumentTemplates() {
