@@ -156,6 +156,15 @@ const apiService = {
   getUsers() {
     return apiClient.get("/users");
   },
+  createUser(user) {
+    return apiClient.post("/users", user);
+  },
+  updateUser(id, user) {
+    return apiClient.put(`/users/${id}`, user);
+  },
+  deleteUser(id) {
+    return apiClient.delete(`/users/${id}`);
+  },
   getContacts() {
     return apiClient.get("/contacts");
   },
