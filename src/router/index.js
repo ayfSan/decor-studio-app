@@ -24,6 +24,11 @@ import Settings from "../components/views/Settings.vue";
 
 // Определяем маршруты приложения
 const routes = [
+  // Перенаправление с главной на страницу входа
+  {
+    path: "/",
+    redirect: "/login",
+  },
   // Маршрут для страницы входа
   {
     path: "/login",
@@ -33,7 +38,7 @@ const routes = [
   },
   // Главная страница
   {
-    path: "/",
+    path: "/home",
     name: "Home",
     component: Home,
     meta: { title: "Главная", requiresAuth: true },

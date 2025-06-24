@@ -315,6 +315,8 @@ const defaultDocument = {
   date: new Date().toISOString().slice(0, 10),
   type: "CONTRACT",
   file_path: "",
+  content: "",
+  document_template_id: null,
 };
 
 const documentTypeLabels = {
@@ -361,8 +363,8 @@ async function loadDocuments() {
   NProgress.start();
   try {
     const docsResponse = await apiService.getDocuments();
-    if (docsResponse.success) {
-      documents.value = docsResponse.data;
+    if (docsResponse.data.success) {
+      documents.value = docsResponse.data.data;
     }
 
     // Automatically expand the current year and month
@@ -437,11 +439,13 @@ function closeModal() {
   isModalOpen.value = false;
 }
 
-watch(selectedTemplateId, (newTemplateId) => {
+watch(selectedTemplateId, async (newTemplateId) => {
   const resetToDefault = () => {
     currentDocument.value.name = defaultDocument.name;
     currentDocument.value.type = defaultDocument.type;
     currentDocument.value.document_number = defaultDocument.document_number;
+    currentDocument.value.content = defaultDocument.content;
+    currentDocument.value.document_template_id = null;
   };
 
   if (isEditMode.value) return;
@@ -451,10 +455,23 @@ watch(selectedTemplateId, (newTemplateId) => {
     return;
   }
 
-  const template = documentTemplates.value.find((t) => t.id === newTemplateId);
-  if (template) {
+  // Find the basic template info from the list
+  const templateInfo = documentTemplates.value.find(
+    (t) => t.id === newTemplateId
+  );
+  if (!templateInfo) return;
+
+  // Since the list doesn't have content, fetch the full template
+  try {
+    NProgress.start();
+    const res = await apiService.getDocumentTemplate(newTemplateId);
+    if (!res.data.success) throw new Error("Template not found");
+    const template = res.data.data;
+
     currentDocument.value.name = template.name;
     currentDocument.value.type = template.type;
+    currentDocument.value.content = template.content; // Store template content
+    currentDocument.value.document_template_id = template.id; // Link to template
 
     // Auto-numbering logic
     if (template.prefix) {
@@ -477,6 +494,12 @@ watch(selectedTemplateId, (newTemplateId) => {
     } else {
       currentDocument.value.document_number = "";
     }
+  } catch (error) {
+    console.error("Failed to load template content:", error);
+    alert("Ошибка загрузки содержимого шаблона.");
+    resetToDefault();
+  } finally {
+    NProgress.done();
   }
 });
 
@@ -484,12 +507,14 @@ async function saveDocument() {
   NProgress.start();
   try {
     if (isEditMode.value) {
-      await apiService.updateDocument(
+      const response = await apiService.updateDocument(
         currentDocument.value.iddocument,
         currentDocument.value
       );
+      if (!response.data.success) throw new Error(response.data.message);
     } else {
-      await apiService.createDocument(currentDocument.value);
+      const response = await apiService.createDocument(currentDocument.value);
+      if (!response.data.success) throw new Error(response.data.message);
     }
     await loadDocuments();
     closeModal();
@@ -520,7 +545,25 @@ async function downloadDocument(docId) {
   if (!docId) return;
   NProgress.start();
   try {
-    await apiService.downloadDocument(docId);
+    const response = await apiService.downloadDocument(docId);
+    // Get filename from content-disposition header
+    const contentDisposition = response.headers["content-disposition"];
+    let filename = "document.pdf";
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="(.+?)"/);
+      if (filenameMatch.length > 1) {
+        filename = filenameMatch[1];
+      }
+    }
+    // Create a Blob from the PDF stream
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
   } catch (error) {
     console.error("Failed to download document:", error);
     alert(`Ошибка при скачивании документа: ${error.message}`);

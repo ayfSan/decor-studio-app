@@ -57,7 +57,8 @@ export const useAuthStore = defineStore("auth", {
       apiService.setAuthHeader(accessToken);
 
       // Перенаправляем пользователя на запрошенную страницу или на главную
-      await router.push(this.returnUrl || "/");
+      const router = (await import("@/router")).default;
+      await router.push(this.returnUrl || "/home");
       this.returnUrl = null;
     },
     /**

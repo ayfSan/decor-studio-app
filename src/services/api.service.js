@@ -10,7 +10,7 @@ const getAuthStore = async () => {
 
 // Создаем экземпляр axios с базовой конфигурацией.
 const apiClient = axios.create({
-  baseURL: "http://localhost:3000/api", // Базовый URL для всех запросов
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000/api", // Базовый URL для всех запросов
   headers: {
     "Content-Type": "application/json", // Тип контента по умолчанию
   },
@@ -172,6 +172,15 @@ const apiService = {
   // --- Документы ---
   getDocuments() {
     return apiClient.get("/documents");
+  },
+  getDocument(id) {
+    return apiClient.get(`/documents/${id}`);
+  },
+  createDocument(document) {
+    return apiClient.post("/documents", document);
+  },
+  updateDocument(id, document) {
+    return apiClient.put(`/documents/${id}`, document);
   },
   getEventDocuments(eventId) {
     return apiClient.get(`/events/${eventId}/documents`);

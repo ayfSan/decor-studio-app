@@ -84,7 +84,7 @@
             </p>
             <p class="text-sm">
               <strong class="font-medium">Telegram ID:</strong>
-              {{ user_item.telegram_id }}
+              {{ user_item.telegram_chat_id || "Не привязан" }}
             </p>
             <p class="text-sm">
               <strong class="font-medium">Дата создания:</strong>
@@ -167,6 +167,17 @@
               class="input-field"
             />
           </div>
+          <div v-if="!isEditMode">
+            <label for="password" class="label-form">Пароль</label>
+            <input
+              type="password"
+              id="password"
+              v-model="currentUser.password"
+              :required="!isEditMode"
+              class="input-field"
+              placeholder="Оставьте пустым, чтобы не менять"
+            />
+          </div>
           <div>
             <label for="role" class="label-form">Роль</label>
             <select id="role" v-model="currentUser.role" class="input-field">
@@ -213,6 +224,7 @@ const defaultUser = {
   first_name: "",
   last_name: "",
   role: "Сотрудник",
+  password: "",
 };
 
 async function loadUsers() {
@@ -220,7 +232,7 @@ async function loadUsers() {
   loadingError.value = null;
   try {
     const response = await apiService.getUsers();
-    users.value = response.data.data;
+    users.value = response.data.data || [];
   } catch (error) {
     console.error("Failed to load users:", error);
     loadingError.value =
@@ -235,25 +247,27 @@ onMounted(() => {
 });
 
 const filteredUsers = computed(() => {
+  const usersArray = Array.isArray(users.value) ? users.value : [];
   if (!searchQuery.value) {
-    return users.value;
+    return usersArray;
   }
   const lowerSearchQuery = searchQuery.value.toLowerCase();
-  return users.value.filter((user) =>
+  return usersArray.filter((user) =>
     Object.values(user).some((val) =>
       String(val).toLowerCase().includes(lowerSearchQuery)
     )
   );
 });
 
-const totalPages = computed(() => {
-  return Math.ceil(filteredUsers.value.length / itemsPerPage);
-});
-
 const paginatedItems = computed(() => {
+  const usersArray = filteredUsers.value || [];
   const startIndex = (currentPage.value - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  return filteredUsers.value.slice(startIndex, endIndex);
+  return usersArray.slice(startIndex, endIndex);
+});
+
+const totalPages = computed(() => {
+  return Math.ceil(filteredUsers.value.length / itemsPerPage);
 });
 
 watch(searchQuery, () => {

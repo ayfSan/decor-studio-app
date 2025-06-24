@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import pool from "./api/database.js";
-import puppeteer from "puppeteer";
+import puppeteer from "chrome-aws-lambda";
 import { promises as fs } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -21,7 +21,25 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = process.env.PORT || 3000;
 
-app.use(cors());
+// Настройка CORS
+const allowedOrigins = [
+  "http://localhost:5173", // Для локальной разработки
+  "https://ayfsan.github.io", // Ваш домен на GitHub Pages
+];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Разрешаем запросы без origin (например, от Postman или мобильных приложений)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true, // Разрешаем передачу cookies и заголовков авторизации
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // --- AUTHENTICATION ---
@@ -220,6 +238,37 @@ app.post(
     }
   }
 );
+
+// Get all users
+app.get("/api/users", authenticateToken, async (req, res) => {
+  try {
+    const [users] = await pool.query(
+      `SELECT 
+        u.id, 
+        u.username, 
+        u.first_name, 
+        u.last_name, 
+        u.telegram_chat_id, 
+        u.created_at,
+        CASE r.name
+          WHEN 'admin' THEN 'Администратор'
+          WHEN 'manager' THEN 'Менеджер'
+          WHEN 'user' THEN 'Сотрудник'
+          ELSE 'Неизвестная роль'
+        END as role
+      FROM user u
+      LEFT JOIN user_roles ur ON u.id = ur.user_id
+      LEFT JOIN roles r ON ur.role_id = r.id
+      ORDER BY u.created_at DESC`
+    );
+    res.json({ success: true, data: users });
+  } catch (error) {
+    console.error("Failed to fetch users:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: error.message });
+  }
+});
 
 // Endpoint for Telegram bot to link a chat_id to a user account
 // В реальном приложении этот эндпоинт нужно защитить (например, секретным токеном бота)
@@ -838,10 +887,10 @@ apiRouter.get("/users", authorizeRoles("admin"), async (req, res) => {
         u.created_at,
         u.telegram_chat_id AS telegram_id,
         CASE r.name
-            WHEN 'admin' THEN 'Администратор'
-            WHEN 'manager' THEN 'Менеджер'
-            WHEN 'user' THEN 'Сотрудник'
-            ELSE 'Не указана'
+          WHEN 'admin' THEN 'Администратор'
+          WHEN 'manager' THEN 'Менеджер'
+          WHEN 'user' THEN 'Сотрудник'
+          ELSE 'Неизвестная роль'
         END AS role
       FROM
         user u
@@ -867,13 +916,12 @@ apiRouter.post("/users", async (req, res) => {
   try {
     await connection.beginTransaction();
 
-    const { telegram_id, username, first_name, last_name, role } = req.body;
-    // The user table requires a password. Since it's not provided in the form,
-    // we'll use a placeholder. Consider updating the form to include a password field.
-    const tempPassword =
-      Math.random().toString(36).slice(-8) +
-      Math.random().toString(36).slice(-8);
-    const hashedPassword = await bcrypt.hash(tempPassword, saltRounds);
+    const { telegram_id, username, first_name, last_name, role, password } =
+      req.body;
+
+    // Используем предоставленный пароль или генерируем случайный, если пароль не указан.
+    const passwordToHash = password || Math.random().toString(36).slice(-8);
+    const hashedPassword = await bcrypt.hash(passwordToHash, saltRounds);
 
     const userSql =
       "INSERT INTO user (username, first_name, last_name, telegram_chat_id, password) VALUES (?, ?, ?, ?, ?)";
@@ -934,17 +982,30 @@ apiRouter.put("/users/:id", async (req, res) => {
   try {
     await connection.beginTransaction();
     const { id } = req.params;
-    const { telegram_id, username, first_name, last_name, role } = req.body;
+    const { telegram_id, username, first_name, last_name, role, password } =
+      req.body;
 
-    const userSql =
-      "UPDATE user SET username = ?, first_name = ?, last_name = ?, telegram_chat_id = ? WHERE id = ?";
-    await connection.query(userSql, [
-      username,
-      first_name,
-      last_name,
-      telegram_id,
-      id,
-    ]);
+    // Динамически строим запрос на обновление, чтобы обновлять только переданные поля.
+    const fieldsToUpdate = {};
+    if (username) fieldsToUpdate.username = username;
+    if (first_name) fieldsToUpdate.first_name = first_name;
+    if (last_name) fieldsToUpdate.last_name = last_name;
+    if (telegram_id) fieldsToUpdate.telegram_chat_id = telegram_id;
+
+    // Если передан новый пароль, хешируем и добавляем его в объект для обновления.
+    if (password) {
+      fieldsToUpdate.password = await bcrypt.hash(password, saltRounds);
+    }
+
+    const userFields = Object.keys(fieldsToUpdate)
+      .map((key) => `${key} = ?`)
+      .join(", ");
+    const userValues = Object.values(fieldsToUpdate);
+
+    if (userFields.length > 0) {
+      const userSql = `UPDATE user SET ${userFields} WHERE id = ?`;
+      await connection.query(userSql, [...userValues, id]);
+    }
 
     if (role) {
       let roleName;
@@ -1318,6 +1379,85 @@ apiRouter.get("/events/:eventId/documents", async (req, res) => {
   res.json({ success: true, data: documents });
 });
 
+// CREATE a new document
+apiRouter.post("/documents", async (req, res) => {
+  const {
+    event_idevent,
+    name,
+    document_number,
+    date,
+    type,
+    file_path,
+    content,
+    document_template_id,
+  } = req.body;
+  try {
+    const sql = `
+      INSERT INTO document (event_idevent, name, document_number, date, type, file_path, content, document_template_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    const [result] = await pool.query(sql, [
+      event_idevent,
+      name,
+      document_number,
+      date,
+      type,
+      file_path,
+      content,
+      document_template_id,
+    ]);
+    res.status(201).json({
+      success: true,
+      message: "Document created successfully",
+      id: result.insertId,
+    });
+  } catch (error) {
+    console.error("Error creating document:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// UPDATE a document
+apiRouter.put("/documents/:id", async (req, res) => {
+  const { id } = req.params;
+  const {
+    event_idevent,
+    name,
+    document_number,
+    date,
+    type,
+    file_path,
+    content,
+  } = req.body;
+  try {
+    const sql = `
+      UPDATE document SET
+        event_idevent = ?,
+        name = ?,
+        document_number = ?,
+        date = ?,
+        type = ?,
+        file_path = ?,
+        content = ?
+      WHERE iddocument = ?
+    `;
+    await pool.query(sql, [
+      event_idevent,
+      name,
+      document_number,
+      date,
+      type,
+      file_path,
+      content,
+      id,
+    ]);
+    res.json({ success: true, message: "Document updated successfully" });
+  } catch (error) {
+    console.error("Error updating document:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 apiRouter.post("/documents/generate", async (req, res) => {
   const { eventId, templateId } = req.body;
   if (!eventId || !templateId) {
@@ -1413,8 +1553,9 @@ apiRouter.post("/documents/generate", async (req, res) => {
     }
 
     const browser = await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox"],
+      args: puppeteer.args,
+      executablePath: await puppeteer.executablePath,
+      headless: puppeteer.headless,
     });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
@@ -1457,23 +1598,38 @@ apiRouter.get("/documents/:id/download", async (req, res) => {
     if (docRows.length === 0) return res.status(404).send("Document not found");
     const doc = docRows[0];
 
+    // --- NEW LOGIC ---
+    // Use content from the document itself if it exists.
+    // Otherwise, fall back to old behavior of generating from a template.
+    let html = doc.content;
+
+    // Fallback to template if content is empty
+    if (!html && doc.document_template_id) {
+      console.log(
+        `Document ${id} has no content, falling back to template ${doc.document_template_id}`
+      );
+      const [templateRows] = await pool.query(
+        "SELECT content FROM document_template WHERE id = ?",
+        [doc.document_template_id]
+      );
+      if (templateRows.length > 0) {
+        html = templateRows[0].content;
+      }
+    }
+
+    if (!html) {
+      return res
+        .status(400)
+        .send("Document has no content and no valid template associated.");
+    }
+    // --- END NEW LOGIC ---
+
     const [companyRows] = await pool.query(
       "SELECT * FROM company_details WHERE is_active = 1 LIMIT 1"
     );
     if (companyRows.length === 0)
       return res.status(404).send("Company details not found");
     const company = companyRows[0];
-
-    if (!doc.document_template_id)
-      return res.status(400).send("The document is not linked to a template.");
-
-    const [templateRows] = await pool.query(
-      "SELECT content FROM document_template WHERE id = ?",
-      [doc.document_template_id]
-    );
-    if (templateRows.length === 0)
-      return res.status(404).send("Document template not found");
-    let html = templateRows[0].content;
 
     const formatDate = (dateStr) =>
       dateStr ? new Date(dateStr).toLocaleDateString("ru-RU") : "не указана";
@@ -1510,8 +1666,9 @@ apiRouter.get("/documents/:id/download", async (req, res) => {
     }
 
     const browser = await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox"],
+      args: puppeteer.args,
+      executablePath: await puppeteer.executablePath,
+      headless: puppeteer.headless,
     });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
@@ -1523,180 +1680,6 @@ apiRouter.get("/documents/:id/download", async (req, res) => {
       "_"
     );
     const safeFilename = `doc_${safeDocNumber}.pdf`;
-
-    res.set({
-      "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="${safeFilename}"`,
-      "Content-Length": pdfBuffer.length,
-    });
-    res.send(pdfBuffer);
-  } catch (error) {
-    res.status(500).send("Error generating PDF: " + error.message);
-  }
-});
-
-apiRouter.get("/document-templates", async (req, res) => {
-  const [templates] = await pool.query(
-    "SELECT id, name, type, prefix FROM document_template ORDER BY name"
-  );
-  res.json({ success: true, data: templates });
-});
-
-apiRouter.get("/document-templates/:id", async (req, res) => {
-  const { id } = req.params;
-  const [template] = await pool.query(
-    "SELECT * FROM document_template WHERE id = ?",
-    [id]
-  );
-  if (template.length > 0) {
-    res.json({ success: true, data: template[0] });
-  } else {
-    res.status(404).json({ success: false, message: "Template not found" });
-  }
-});
-
-apiRouter.post("/document-templates", async (req, res) => {
-  const { name, type, prefix, content } = req.body;
-  const sql =
-    "INSERT INTO document_template (name, type, prefix, content) VALUES (?, ?, ?, ?)";
-  const [result] = await pool.query(sql, [name, type, prefix || null, content]);
-  res
-    .status(201)
-    .json({ success: true, data: { id: result.insertId, ...req.body } });
-});
-
-apiRouter.put("/document-templates/:id", async (req, res) => {
-  const { id } = req.params;
-  const { name, type, prefix, content } = req.body;
-  const sql =
-    "UPDATE document_template SET name = ?, type = ?, prefix = ?, content = ? WHERE id = ?";
-  await pool.query(sql, [name, type, prefix || null, content, id]);
-  res.json({ success: true, data: { id, ...req.body } });
-});
-
-apiRouter.delete("/document-templates/:id", async (req, res) => {
-  const { id } = req.params;
-  await pool.query("DELETE FROM document_template WHERE id = ?", [id]);
-  res.json({ success: true, message: "Document template deleted" });
-});
-
-// --- DOCUMENTS ---
-apiRouter.get("/events/:eventId/documents", async (req, res) => {
-  const { eventId } = req.params;
-  const sql = `
-    SELECT d.iddocument, d.name, d.document_number, d.date, d.type
-    FROM document d
-    WHERE d.event_idevent = ?
-    ORDER BY d.date DESC
-  `;
-  const [documents] = await pool.query(sql, [eventId]);
-  res.json({ success: true, data: documents });
-});
-
-apiRouter.post("/documents/generate", async (req, res) => {
-  const { event_idevent, document_template_id } = req.body;
-  const connection = await pool.getConnection();
-  try {
-    await connection.beginTransaction();
-
-    const [eventRows] = await connection.query(
-      `SELECT e.*, c.name_customer, c.contact_person, c.phone as customer_phone, v.name_venue, v.address as venue_address
-       FROM event e
-       JOIN customer c ON e.customer_idcustomer = c.idcustomer
-       JOIN venue v ON e.venue_idvenue = v.idvenue
-       WHERE e.idevent = ?`,
-      [event_idevent]
-    );
-    if (eventRows.length === 0) throw new Error("Мероприятие не найдено");
-    const eventData = eventRows[0];
-
-    const [templateRows] = await connection.query(
-      "SELECT * FROM document_template WHERE id = ?",
-      [document_template_id]
-    );
-    if (templateRows.length === 0) throw new Error("Шаблон не найден");
-    const template = templateRows[0];
-
-    const [companyRows] = await connection.query(
-      "SELECT * FROM company_details WHERE is_active = 1 LIMIT 1"
-    );
-    if (companyRows.length === 0)
-      throw new Error("Реквизиты компании не найдены");
-    const company = companyRows[0];
-
-    const docName = template.name
-      .replace(/{{eventName}}/g, eventData.project_name || "...")
-      .trim();
-    const docDate = new Date();
-    const docType = template.type;
-
-    const [insertResult] = await connection.query(
-      `INSERT INTO document (event_idevent, name, document_number, date, type, document_template_id) VALUES (?, ?, ?, ?, ?, ?)`,
-      [
-        event_idevent,
-        docName,
-        "...creating...",
-        docDate,
-        docType,
-        document_template_id,
-      ]
-    );
-    const newDocId = insertResult.insertId;
-    const docNumber = `${template.prefix || "DOC"}-${newDocId}`;
-
-    await connection.query(
-      `UPDATE document SET document_number = ? WHERE iddocument = ?`,
-      [docNumber, newDocId]
-    );
-    await connection.commit();
-
-    let html = template.content;
-    const formatDate = (dateStr) =>
-      dateStr ? new Date(dateStr).toLocaleDateString("ru-RU") : "не указана";
-    const fill = (value, placeholder = "_".repeat(20)) => value || placeholder;
-
-    const replacements = {
-      documentNumber: fill(docNumber, "б/н"),
-      documentDate: formatDate(docDate),
-      customerName: fill(eventData.name_customer),
-      customerContactPerson: fill(eventData.contact_person),
-      customerPhone: fill(eventData.customer_phone),
-      customerAddress: fill(null),
-      customerPassport: fill(null),
-      eventName: fill(eventData.project_name),
-      eventDate: formatDate(eventData.date),
-      eventVenue: fill(`${eventData.name_venue} (${eventData.venue_address})`),
-      eventCost: eventData.cost
-        ? String(eventData.cost).replace(/\.00$/, "")
-        : "0",
-      prepaymentAmount: eventData.cost
-        ? String(eventData.cost / 2).replace(/\.00$/, "")
-        : "0",
-      executorName: fill(company.name),
-      executorLegalBasis: fill(company.legal_basis),
-      executorAddress: fill(company.address),
-      executorInn: fill(company.inn),
-      executorPhone: fill(company.phone),
-      executorBankName: fill(company.bank_name),
-      executorCheckingAccount: fill(company.checking_account),
-      executorCorrespondentAccount: fill(company.correspondent_account),
-      executorBic: fill(company.bic),
-    };
-
-    for (const key in replacements) {
-      html = html.replace(new RegExp(`{{${key}}}`, "g"), replacements[key]);
-    }
-
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox"],
-    });
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-    const pdfBuffer = await page.pdf({ format: "A4", printBackground: true });
-    await browser.close();
-
-    const safeFilename = `${docNumber}.pdf`.replace(/[^a-zA-Z0-9-._]/g, "_");
 
     res.set({
       "Content-Type": "application/pdf",
@@ -1705,107 +1688,7 @@ apiRouter.post("/documents/generate", async (req, res) => {
     });
     res.send(pdfBuffer);
   } catch (error) {
-    await connection.rollback();
-    res.status(500).json({
-      success: false,
-      message: "Failed to generate document",
-      error: error.message,
-    });
-  } finally {
-    connection.release();
-  }
-});
-
-apiRouter.get("/documents/:id/download", async (req, res) => {
-  const { id } = req.params;
-  try {
-    const [docRows] = await pool.query(
-      `SELECT d.*, e.project_name, e.date as event_date, e.cost, c.name_customer, c.contact_person, c.phone as customer_phone, v.name_venue, v.address as venue_address
-       FROM document d
-       JOIN event e ON d.event_idevent = e.idevent
-       JOIN customer c ON e.customer_idcustomer = c.idcustomer
-       JOIN venue v ON e.venue_idvenue = v.idvenue
-       WHERE d.iddocument = ?`,
-      [id]
-    );
-
-    if (docRows.length === 0) return res.status(404).send("Document not found");
-    const doc = docRows[0];
-
-    const [companyRows] = await pool.query(
-      "SELECT * FROM company_details WHERE is_active = 1 LIMIT 1"
-    );
-    if (companyRows.length === 0)
-      return res.status(404).send("Company details not found");
-    const company = companyRows[0];
-
-    if (!doc.document_template_id)
-      return res.status(400).send("The document is not linked to a template.");
-
-    const [templateRows] = await pool.query(
-      "SELECT content FROM document_template WHERE id = ?",
-      [doc.document_template_id]
-    );
-    if (templateRows.length === 0)
-      return res.status(404).send("Document template not found");
-    let html = templateRows[0].content;
-
-    const formatDate = (dateStr) =>
-      dateStr ? new Date(dateStr).toLocaleDateString("ru-RU") : "не указана";
-    const fill = (value, placeholder = "_".repeat(20)) => value || placeholder;
-
-    const replacements = {
-      documentNumber: fill(doc.document_number, "б/н"),
-      documentDate: formatDate(doc.date),
-      customerName: fill(doc.name_customer),
-      customerContactPerson: fill(doc.contact_person),
-      customerPhone: fill(doc.customer_phone),
-      customerAddress: fill(null),
-      customerPassport: fill(null),
-      eventName: fill(doc.project_name),
-      eventDate: formatDate(doc.event_date),
-      eventVenue: fill(`${doc.name_venue} (${doc.venue_address})`),
-      eventCost: doc.cost ? String(doc.cost).replace(/\.00$/, "") : "0",
-      prepaymentAmount: doc.cost
-        ? String(doc.cost / 2).replace(/\.00$/, "")
-        : "0",
-      executorName: fill(company.name),
-      executorLegalBasis: fill(company.legal_basis),
-      executorAddress: fill(company.address),
-      executorInn: fill(company.inn),
-      executorPhone: fill(company.phone),
-      executorBankName: fill(company.bank_name),
-      executorCheckingAccount: fill(company.checking_account),
-      executorCorrespondentAccount: fill(company.correspondent_account),
-      executorBic: fill(company.bic),
-    };
-
-    for (const key in replacements) {
-      html = html.replace(new RegExp(`{{${key}}}`, "g"), replacements[key]);
-    }
-
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox"],
-    });
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-    const pdfBuffer = await page.pdf({ format: "A4", printBackground: true });
-    await browser.close();
-
-    const safeDocNumber = (doc.document_number || String(id)).replace(
-      /[^a-zA-Z0-9-]/g,
-      "_"
-    );
-    const safeFilename = `doc_${safeDocNumber}.pdf`;
-
-    res.set({
-      "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="${safeFilename}"`,
-      "Content-Length": pdfBuffer.length,
-    });
-    res.send(pdfBuffer);
-  } catch (error) {
+    console.error("Error generating PDF:", error);
     res.status(500).send("Error generating PDF: " + error.message);
   }
 });
