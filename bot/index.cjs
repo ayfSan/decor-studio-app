@@ -59,6 +59,17 @@ bot.onText(/\/add/, (msg) => handleAddStart(msg));
 bot.onText(/\/(app|web_app)/, async (msg) => {
   const chatId = msg.chat.id;
   await logger.logCommand(chatId, "app");
+
+  if (!webAppUrl) {
+    logger.logError(chatId, new Error("WEBAPP_URL is not configured"), {
+      command: "/app",
+    });
+    return bot.sendMessage(
+      chatId,
+      "К сожалению, адрес веб-приложения не настроен. Обратитесь к администратору."
+    );
+  }
+
   bot.sendMessage(
     chatId,
     "👇 Нажмите на кнопку ниже, чтобы открыть приложение.",
@@ -89,6 +100,10 @@ bot.onText(/\/link (.+)/, (msg, match) =>
 bot.onText(/^[A-Z0-9]{6}$/, (msg) => {
   if (msg.text.startsWith("/")) return;
   handleLinkCommand(msg.chat.id, msg.text);
+});
+
+bot.onText(/\/login/, (msg) => {
+  handleLoginRequest(msg.chat.id);
 });
 
 // --- ЕДИНЫЙ ОБРАБОТЧИК СООБЩЕНИЙ ---
@@ -126,33 +141,38 @@ bot.on("message", async (msg) => {
 
 // --- ЕДИНЫЙ ОБРАБОТЧИК CALLBACK_QUERY ---
 
-bot.on("callback_query", async (callbackQuery) => {
-  const msg = callbackQuery.message;
-  const chatId = msg.chat.id;
-  const data = callbackQuery.data;
-
-  bot.answerCallbackQuery(callbackQuery.id);
-  await logger.logAction(chatId, "callback_query", { data });
+bot.on("callback_query", async (query) => {
+  const chatId = query.message.chat.id;
+  const data = query.data;
+  const msg = query.message;
 
   const state = userDialogState[chatId];
+  if (!state) {
+    if (data === "cancel_dialog") {
+      await bot.answerCallbackQuery(query.id);
+      await bot
+        .deleteMessage(chatId, msg.message_id)
+        .catch((e) => logger.error(`Failed to delete message: ${e.message}`));
+      return;
+    }
+
+    await bot.answerCallbackQuery(query.id, {
+      text: "Диалог истек или не был начат.",
+    });
+    return;
+  }
+
+  await bot.answerCallbackQuery(query.id);
+  await logger.logAction(chatId, "callback_query", { data });
+
   if (data === "cancel_dialog") {
     delete userDialogState[chatId];
-    return bot.editMessageText("Действие отменено.", {
+    await bot.editMessageText("Действие отменено.", {
       chat_id: chatId,
       message_id: msg.message_id,
       reply_markup: null,
     });
-  }
-
-  if (!state) {
-    return bot.editMessageText(
-      "Этот диалог уже неактивен. Начните заново с /add.",
-      {
-        chat_id: chatId,
-        message_id: msg.message_id,
-        reply_markup: null,
-      }
-    );
+    return;
   }
 
   switch (state.step) {
@@ -229,10 +249,50 @@ bot.on("callback_query", async (callbackQuery) => {
 
 // --- Функции диалога ---
 
+async function startDialog(chatId) {
+  await logger.logCommand(chatId, "start");
+
+  const keyboard = [
+    [{ text: "➕ Добавить операцию", callback_data: "add_operation" }],
+    // More buttons can be added here for other commands
+  ];
+
+  const options = {
+    reply_markup: JSON.stringify({
+      inline_keyboard: keyboard,
+    }),
+  };
+
+  await bot.sendMessage(
+    chatId,
+    "Добро пожаловать! 👋\n\nЯ помогу вам управлять вашими финансами и событиями. Выберите действие:",
+    options
+  );
+}
+
 async function handleAddStart(msg) {
   const chatId = msg.chat.id;
-  await logger.logCommand(chatId, "add_start");
-  startDialog(chatId);
+  await logger.logCommand(chatId, "add");
+
+  userDialogState[chatId] = {
+    step: "askForType",
+    userId: msg.from.id,
+  };
+  logger.logAction(chatId, "dialog_start", { dialog: "add_operation" });
+
+  const options = {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "💵 Доход", callback_data: "income" },
+          { text: "💳 Расход", callback_data: "expense" },
+        ],
+        [{ text: "❌ Отмена", callback_data: "cancel_dialog" }],
+      ],
+    },
+  };
+
+  await bot.sendMessage(chatId, "Выберите тип операции:", options);
 }
 
 async function askForEvent(chatId) {
@@ -553,6 +613,62 @@ async function handleLinkCommand(chatId, code) {
     logger.logError(chatId, error, { context: "handleLinkCommand" });
   }
 }
+
+const handleLoginRequest = async (chatId) => {
+  logger.info(`[Login] User ${chatId} requested login link.`);
+  try {
+    // Call the backend to generate a one-time login token
+    const { data: response } = await axios.post(
+      `${apiUrl}/telegram/generate-login-token`,
+      { chatId }
+    );
+
+    if (response.success && response.token) {
+      // IMPORTANT: Replace with your actual frontend URL
+      const loginUrl = `http://localhost:5173/login?tg_token=${response.token}`;
+
+      const options = {
+        reply_markup: JSON.stringify({
+          inline_keyboard: [
+            [{ text: "Войти в веб-приложение", url: loginUrl }],
+          ],
+        }),
+      };
+      bot.sendMessage(
+        chatId,
+        "Вы получили ссылку для быстрого входа. Она действует 2 минуты и может быть использована только один раз.",
+        options
+      );
+    } else {
+      throw new Error(response.message || "Failed to get login token.");
+    }
+  } catch (error) {
+    logger.error(
+      `[Login] Failed to generate login link for ${chatId}: ${error.message}`
+    );
+
+    // Check if the error is because the user is not linked
+    if (error.response && error.response.status === 404) {
+      bot.sendMessage(
+        chatId,
+        "Ваш Telegram-аккаунт не привязан к профилю в системе. Пожалуйста, сначала войдите в веб-приложение и привяжите аккаунт в настройках."
+      );
+    } else {
+      bot.sendMessage(
+        chatId,
+        "Не удалось создать ссылку для входа. Попробуйте снова позже."
+      );
+    }
+  }
+};
+
+// --- BOT START ---
+bot.setMyCommands([
+  { command: "/start", description: "Начать работу с ботом" },
+  { command: "/app", description: "Открыть веб-приложение" },
+  { command: "/add", description: "Добавить доход или расход" },
+  { command: "/login", description: "Быстрый вход в веб-приложение" },
+]);
 
 bot.on("polling_error", (error) => {
   logger.logError("system", error, { type: "polling_error" });

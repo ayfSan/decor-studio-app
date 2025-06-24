@@ -1,10 +1,10 @@
-CREATE DATABASE  IF NOT EXISTS `2d_decorstudio_v2` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
-USE `2d_decorstudio_v2`;
+CREATE DATABASE  IF NOT EXISTS `a1142004_2d_decorstudio` /*!40100 DEFAULT CHARACTER SET utf8mb3 COLLATE utf8mb3_unicode_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
+USE `a1142004_2d_decorstudio`;
 -- MySQL dump 10.13  Distrib 8.0.31, for Win64 (x86_64)
 --
--- Host: localhost    Database: 2d_decorstudio_v2
+-- Host: 141.8.192.84    Database: a1142004_2d_decorstudio
 -- ------------------------------------------------------
--- Server version	8.0.31
+-- Server version	8.0.37-29
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
@@ -316,7 +316,7 @@ CREATE TABLE `event` (
 
 LOCK TABLES `event` WRITE;
 /*!40000 ALTER TABLE `event` DISABLE KEYS */;
-INSERT INTO `event` VALUES (1,'2025-06-15 09:00:00.000','Тестовая Свадьба Ивановых',1,1,1,200000.00,'Молодожены и 50 гостей'),(2,'2025-08-19 22:00:00.000','Тестовый Корпоратив ООО \"Ромашка\"',2,2,2,350000.00,'Сотрудники компании, 70 человек'),(3,'2025-06-04 18:03:00.000','Тестовое мероприятие 1243',2,2,1,500000.00,'-'),(5,'2025-06-18 04:15:00.000','Тест1',2,1,1,250000.00,NULL),(6,'2025-06-16 23:16:00.000','tot hfp1',3,2,1,50000.00,NULL);
+INSERT INTO `event` VALUES (1,'2025-06-15 09:00:00.000','Тестовая Свадьба Ивановых',1,1,1,200000.00,'Молодожены и 50 гостей'),(2,'2025-08-19 22:00:00.000','Тестовый Корпоратив ООО \"Ромашка\"',2,2,2,350000.00,'Сотрудники компании, 70 человек'),(3,'2025-06-04 18:03:00.000','Тестовое мероприятие 1243',2,2,1,500000.00,'-'),(5,'2025-06-26 23:15:00.000','Тест1',2,1,1,250000.00,NULL),(6,'2025-06-16 23:16:00.000','tot hfp1',3,2,1,50000.00,NULL);
 /*!40000 ALTER TABLE `event` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -445,14 +445,15 @@ CREATE TABLE `user` (
   `first_name` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `last_name` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `telegram_chat_id` bigint DEFAULT NULL,
-  `telegram_link_code` varchar(45) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `telegram_link_code_expires_at` datetime DEFAULT NULL,
+  `temp_token` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `temp_token_expires_at` datetime DEFAULT NULL,
+  `temp_token_type` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
   UNIQUE KEY `username_UNIQUE` (`username`),
   UNIQUE KEY `telegram_chat_id_UNIQUE` (`telegram_chat_id`),
-  UNIQUE KEY `telegram_link_code_UNIQUE` (`telegram_link_code`)
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  UNIQUE KEY `temp_token_UNIQUE` (`temp_token`)
+) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -461,7 +462,7 @@ CREATE TABLE `user` (
 
 LOCK TABLES `user` WRITE;
 /*!40000 ALTER TABLE `user` DISABLE KEYS */;
-INSERT INTO `user` VALUES (3,'admin','$2b$10$4ckgHROCf.TvwxX7iqLAJO3CeOpFsLJG2OcWUk633eWZ91U6U3BMq','Admin','User',NULL,NULL,NULL,'2025-05-05 00:00:00.000'),(4,'newadmin','$2b$10$fPL.92g2D1W9v9zC1i./..I4f0G39w6t.H0Y.Cea4nB42T4gG.8OW','Новый','Админ',NULL,NULL,NULL,'2025-06-10 01:23:59.000');
+INSERT INTO `user` VALUES (3,'admin','$2b$10$4ckgHROCf.TvwxX7iqLAJO3CeOpFsLJG2OcWUk633eWZ91U6U3BMq','Admin','User',1020152129,NULL,NULL,NULL,'2025-05-05 00:00:00.000'),(4,'newadmin','$2b$10$fPL.92g2D1W9v9zC1i./..I4f0G39w6t.H0Y.Cea4nB42T4gG.8OW','Новый','Админ',NULL,NULL,NULL,NULL,'2025-06-10 01:23:59.000'),(5,'katyad','$2b$10$fPL.92g2D1W9v9zC1i./..I4f0G39w6t.H0Y.Cea4nB42T4gG.8OW','Екатерина',NULL,NULL,NULL,NULL,NULL,'2025-06-24 20:41:05.246'),(6,'tanyai','$2b$10$fPL.92g2D1W9v9zC1i./..I4f0G39w6t.H0Y.Cea4nB42T4gG.8OW','Татьяна',NULL,NULL,NULL,NULL,NULL,'2025-06-24 20:41:05.247'),(7,'edikg','$2b$10$fPL.92g2D1W9v9zC1i./..I4f0G39w6t.H0Y.Cea4nB42T4gG.8OW','Эдуард',NULL,NULL,NULL,NULL,NULL,'2025-06-24 20:41:05.248');
 /*!40000 ALTER TABLE `user` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -488,7 +489,7 @@ CREATE TABLE `user_roles` (
 
 LOCK TABLES `user_roles` WRITE;
 /*!40000 ALTER TABLE `user_roles` DISABLE KEYS */;
-INSERT INTO `user_roles` VALUES (3,1),(4,1);
+INSERT INTO `user_roles` VALUES (3,1),(4,1),(5,1),(6,1),(7,1);
 /*!40000 ALTER TABLE `user_roles` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -523,11 +524,11 @@ INSERT INTO `venue` VALUES (1,'Ресторан \"Панорама\"','г. Го�
 UNLOCK TABLES;
 
 --
--- Dumping events for database '2d_decorstudio_v2'
+-- Dumping events for database 'a1142004_2d_decorstudio'
 --
 
 --
--- Dumping routines for database '2d_decorstudio_v2'
+-- Dumping routines for database 'a1142004_2d_decorstudio'
 --
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -539,4 +540,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-06-23 22:10:09
+-- Dump completed on 2025-06-24 21:51:25
