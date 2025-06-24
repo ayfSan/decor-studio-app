@@ -112,6 +112,15 @@ const apiService = {
   getEventCategories() {
     return apiClient.get("/event-categories");
   },
+  createEventCategory(category) {
+    return apiClient.post("/event-categories", category);
+  },
+  updateEventCategory(id, category) {
+    return apiClient.put(`/event-categories/${id}`, category);
+  },
+  deleteEventCategory(id) {
+    return apiClient.delete(`/event-categories/${id}`);
+  },
   getVenues() {
     return apiClient.get("/venues");
   },
