@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import pool from "./api/database.js";
-import puppeteer from "chrome-aws-lambda";
+import chromium from "chrome-aws-lambda";
 import { promises as fs } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -1355,6 +1355,85 @@ apiRouter.delete("/tasks/:taskId", async (req, res) => {
 });
 
 // --- DOCUMENTS & TEMPLATES ---
+
+// Document Templates
+apiRouter.get("/document-templates", async (req, res) => {
+  try {
+    const [templates] = await pool.query(
+      "SELECT id, name, type, prefix FROM document_template ORDER BY name"
+    );
+    res.json({ success: true, data: templates });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+apiRouter.get("/document-templates/:id", async (req, res) => {
+  try {
+    const [template] = await pool.query(
+      "SELECT * FROM document_template WHERE id = ?",
+      [req.params.id]
+    );
+    if (template.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Template not found" });
+    }
+    res.json({ success: true, data: template[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+apiRouter.post("/document-templates", async (req, res) => {
+  const { name, type, prefix, content } = req.body;
+  try {
+    const [result] = await pool.query(
+      "INSERT INTO document_template (name, type, prefix, content) VALUES (?, ?, ?, ?)",
+      [name, type, prefix, content]
+    );
+    res.status(201).json({ success: true, id: result.insertId });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+apiRouter.put("/document-templates/:id", async (req, res) => {
+  const { name, type, prefix, content } = req.body;
+  try {
+    const [result] = await pool.query(
+      "UPDATE document_template SET name = ?, type = ?, prefix = ?, content = ? WHERE id = ?",
+      [name, type, prefix, content, req.params.id]
+    );
+    if (result.affectedRows === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Template not found" });
+    }
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+apiRouter.delete("/document-templates/:id", async (req, res) => {
+  try {
+    const [result] = await pool.query(
+      "DELETE FROM document_template WHERE id = ?",
+      [req.params.id]
+    );
+    if (result.affectedRows === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Template not found" });
+    }
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Documents
 apiRouter.get("/documents", async (req, res) => {
   const sql = `
     SELECT d.*, e.project_name, dt.name as template_name
@@ -1552,10 +1631,10 @@ apiRouter.post("/documents/generate", async (req, res) => {
       html = html.replace(new RegExp(`{{${key}}}`, "g"), replacements[key]);
     }
 
-    const browser = await puppeteer.launch({
-      args: puppeteer.args,
-      executablePath: await puppeteer.executablePath,
-      headless: puppeteer.headless,
+    const browser = await chromium.puppeteer.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath,
+      headless: chromium.headless,
     });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
@@ -1665,10 +1744,10 @@ apiRouter.get("/documents/:id/download", async (req, res) => {
       html = html.replace(new RegExp(`{{${key}}}`, "g"), replacements[key]);
     }
 
-    const browser = await puppeteer.launch({
-      args: puppeteer.args,
-      executablePath: await puppeteer.executablePath,
-      headless: puppeteer.headless,
+    const browser = await chromium.puppeteer.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath,
+      headless: chromium.headless,
     });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
