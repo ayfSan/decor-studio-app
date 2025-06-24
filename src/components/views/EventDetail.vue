@@ -114,12 +114,26 @@
                   </p>
                 </div>
               </div>
-              <button
-                @click="downloadDocument(doc.iddocument)"
-                class="btn-secondary btn-sm flex-shrink-0"
-              >
-                Скачать
-              </button>
+              <div class="flex items-center gap-2 flex-shrink-0">
+                <button
+                  @click="downloadDocument(doc)"
+                  class="btn-secondary btn-sm"
+                  title="Скачать документ"
+                >
+                  <span class="material-symbols-outlined text-base"
+                    >download</span
+                  >
+                </button>
+                <button
+                  @click="confirmDeleteDocument(doc)"
+                  class="btn-danger btn-sm"
+                  title="Удалить документ"
+                >
+                  <span class="material-symbols-outlined text-base"
+                    >delete</span
+                  >
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -503,16 +517,43 @@ const fetchEventDocuments = async () => {
   }
 };
 
-const downloadDocument = async (docId) => {
+const downloadDocument = async (doc) => {
+  if (!doc || !doc.iddocument) return;
+  NProgress.start();
   try {
-    await apiService.downloadDocument(docId);
+    const response = await apiService.downloadDocument(doc.iddocument);
+    const blob = new Blob([response.data], { type: "application/pdf" });
+
+    // Создаем ссылку для скачивания
+    const link = document.createElement("a");
+    link.href = window.URL.createObjectURL(blob);
+
+    // Пытаемся получить имя файла из заголовков, иначе генерируем его
+    const contentDisposition = response.headers["content-disposition"];
+    let filename = `${doc.name || "document"}.pdf`;
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
+      if (filenameMatch && filenameMatch.length > 1) {
+        filename = filenameMatch[1];
+      }
+    }
+
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+
+    // Кликаем по ссылке для начала загрузки
+    link.click();
+
+    // Очищаем
+    link.remove();
+    window.URL.revokeObjectURL(link.href);
   } catch (error) {
-    console.error("Failed to download document:", error);
+    console.error("Ошибка при скачивании документа:", error);
     alert(
-      `Ошибка при скачивании документа: ${
-        error.message || "Неизвестная ошибка"
-      }`
+      "Не удалось скачать документ. Возможно, он еще не сгенерирован или произошла ошибка на сервере."
     );
+  } finally {
+    NProgress.done();
   }
 };
 
@@ -521,37 +562,36 @@ const handleGenerateDocument = async () => {
     alert("Пожалуйста, выберите шаблон.");
     return;
   }
-  isGenerating.value = true;
-  try {
-    const response = await apiService.generateDocument(
-      props.eventId,
-      selectedTemplateId.value
+
+  // Проверка на дубликаты
+  const template = documentTemplates.value.find(
+    (t) => t.id === selectedTemplateId.value
+  );
+  if (template && template.type !== "OTHER") {
+    const existingDoc = eventDocuments.value.find(
+      (d) => d.type === template.type
     );
-
-    const url = window.URL.createObjectURL(new Blob([response.data]));
-    const link = document.createElement("a");
-    link.href = url;
-
-    const contentDisposition = response.headers["content-disposition"];
-    let fileName = `document-${props.eventId}.pdf`;
-    if (contentDisposition) {
-      const fileNameMatch = contentDisposition.match(/filename="(.+)"/);
-      if (fileNameMatch.length === 2) fileName = fileNameMatch[1];
+    if (existingDoc) {
+      alert(
+        `Документ типа "${template.name}" уже существует для этого мероприятия. Вы не можете создать второй.`
+      );
+      return;
     }
+  }
 
-    link.setAttribute("download", fileName);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(url);
-
-    closeGenerateDocModal();
+  isGenerating.value = true;
+  NProgress.start();
+  try {
+    // 1. Просто создаем документ без скачивания
+    await apiService.generateDocument(props.eventId, selectedTemplateId.value);
+    // 2. Обновляем список документов
     await fetchEventDocuments();
   } catch (error) {
-    console.error("Error generating document:", error);
-    alert("Не удалось сгенерировать документ.");
+    console.error("Ошибка при создании документа:", error);
+    alert("Не удалось создать документ. Пожалуйста, попробуйте еще раз.");
   } finally {
     isGenerating.value = false;
+    NProgress.done();
   }
 };
 
@@ -712,6 +752,29 @@ const fetchDocumentTemplates = async () => {
   } catch (error) {
     console.error("Failed to fetch document templates", error);
     documentTemplates.value = [];
+  }
+};
+
+const confirmDeleteDocument = async (docToDelete) => {
+  if (
+    confirm(
+      `Вы уверены, что хотите удалить документ "${docToDelete.name}"? Это действие необратимо.`
+    )
+  ) {
+    NProgress.start();
+    try {
+      const response = await apiService.deleteDocument(docToDelete.iddocument);
+      if (response.data.success) {
+        await fetchEventDocuments(); // Обновляем список
+      } else {
+        alert(`Не удалось удалить документ: ${response.data.message}`);
+      }
+    } catch (error) {
+      console.error("Ошибка при удалении документа:", error);
+      alert("Произошла критическая ошибка при удалении документа.");
+    } finally {
+      NProgress.done();
+    }
   }
 };
 
