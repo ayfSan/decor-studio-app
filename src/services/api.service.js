@@ -1,6 +1,8 @@
 import axios from "axios";
 import NProgress from "nprogress";
 
+console.log("--- API Service Version: VENUES_FIX_FINAL ---");
+
 // Динамический импорт хранилища auth.store во избежание циклических зависимостей при запуске.
 // Это позволяет api.service и auth.store импортировать друг друга.
 const getAuthStore = async () => {
