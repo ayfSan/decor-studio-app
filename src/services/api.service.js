@@ -168,6 +168,15 @@ const apiService = {
   getContacts() {
     return apiClient.get("/contacts");
   },
+  createContact(contact) {
+    return apiClient.post("/contacts", contact);
+  },
+  updateContact(id, contact) {
+    return apiClient.put(`/contacts/${id}`, contact);
+  },
+  deleteContact(id) {
+    return apiClient.delete(`/contacts/${id}`);
+  },
 
   // --- Учет средств (Cashflow) ---
   getCashflow(eventId = null) {
