@@ -278,8 +278,8 @@ const openModal = async (template = null) => {
     isEditing.value = true;
     try {
       const res = await apiService.getDocumentTemplate(template.id);
-      if (res.success) {
-        form.value = res.data;
+      if (res.data.success) {
+        form.value = res.data.data;
       }
     } catch (err) {
       error.value = "Не удалось загрузить данные шаблона.";

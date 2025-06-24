@@ -1,7 +1,8 @@
 import express from "express";
 import cors from "cors";
 import pool from "./api/database.js";
-import chromium from "chrome-aws-lambda";
+import chromium from "@sparticuz/chromium";
+import puppeteer from "puppeteer-core";
 import { promises as fs } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -1631,10 +1632,12 @@ apiRouter.post("/documents/generate", async (req, res) => {
       html = html.replace(new RegExp(`{{${key}}}`, "g"), replacements[key]);
     }
 
-    const browser = await chromium.puppeteer.launch({
+    const browser = await puppeteer.launch({
       args: chromium.args,
-      executablePath: await chromium.executablePath,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
       headless: chromium.headless,
+      ignoreHTTPSErrors: true,
     });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
@@ -1744,10 +1747,12 @@ apiRouter.get("/documents/:id/download", async (req, res) => {
       html = html.replace(new RegExp(`{{${key}}}`, "g"), replacements[key]);
     }
 
-    const browser = await chromium.puppeteer.launch({
+    const browser = await puppeteer.launch({
       args: chromium.args,
-      executablePath: await chromium.executablePath,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
       headless: chromium.headless,
+      ignoreHTTPSErrors: true,
     });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
