@@ -6,6 +6,7 @@ require("dotenv").config();
 const token = process.env.BOT_TOKEN;
 const webAppUrl = process.env.WEBAPP_URL;
 const apiUrl = process.env.API_URL || "http://localhost:3000/api";
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || process.env.BOT_TOKEN; // Используем BOT_TOKEN как fallback
 
 // Проверка на HTTPS для Web App
 if (webAppUrl && !webAppUrl.startsWith("https://")) {
@@ -649,6 +650,18 @@ const handleLoginRequest = async (chatId) => {
     logger.error(
       `[Login] Failed to generate login link for ${chatId}: ${error.message}`
     );
+
+    // Добавляем подробное логирование ошибки
+    if (error.response) {
+      logger.error(`[Login] Response status: ${error.response.status}`);
+      logger.error(
+        `[Login] Response data: ${JSON.stringify(error.response.data)}`
+      );
+    } else if (error.request) {
+      logger.error(`[Login] No response received: ${error.request}`);
+    } else {
+      logger.error(`[Login] Error setting up request: ${error.message}`);
+    }
 
     // Check if the error is because the user is not linked
     if (error.response && error.response.status === 404) {
