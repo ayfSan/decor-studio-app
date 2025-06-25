@@ -186,7 +186,7 @@ app.post("/api/auth/login-telegram", async (req, res) => {
   try {
     // Find user by token
     const [users] = await pool.query(
-      "SELECT * FROM user WHERE temp_token = ? AND temp_token_type = 'login' AND temp_token_expires_at > NOW()",
+      "SELECT * FROM user WHERE temp_token = ? AND temp_token_type = 'login' AND temp_token_expires_at > UTC_TIMESTAMP()",
       [token]
     );
 
@@ -487,10 +487,16 @@ app.post("/api/telegram/generate-login-token", async (req, res) => {
     const token = randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + 2 * 60 * 1000); // 2 minutes
 
+    // Используем MySQL формат времени
+    const mysqlExpiresAt = expiresAt
+      .toISOString()
+      .slice(0, 19)
+      .replace("T", " ");
+
     // Store the token
     await pool.query(
       "UPDATE user SET temp_token = ?, temp_token_expires_at = ?, temp_token_type = 'login' WHERE id = ?",
-      [token, expiresAt, userId]
+      [token, mysqlExpiresAt, userId]
     );
 
     res.json({ success: true, token });
