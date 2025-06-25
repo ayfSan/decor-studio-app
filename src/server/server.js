@@ -295,7 +295,7 @@ app.post(
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // Code expires in 5 minutes
 
       await pool.query(
-        "UPDATE user SET telegram_link_code = ?, telegram_link_code_expires_at = ? WHERE id = ?",
+        "UPDATE user SET temp_token = ?, temp_token_expires_at = ?, temp_token_type = 'link' WHERE id = ?",
         [code, expiresAt, userId]
       );
 
@@ -378,7 +378,7 @@ app.post("/api/telegram/link-account", async (req, res) => {
 
   try {
     const [users] = await pool.query(
-      "SELECT * FROM user WHERE telegram_link_code = ? AND telegram_link_code_expires_at > NOW()",
+      "SELECT * FROM user WHERE temp_token = ? AND temp_token_type = 'link' AND temp_token_expires_at > NOW()",
       [code]
     );
 
@@ -390,7 +390,7 @@ app.post("/api/telegram/link-account", async (req, res) => {
     const user = users[0];
 
     await pool.query(
-      "UPDATE user SET telegram_chat_id = ?, telegram_link_code = NULL, telegram_link_code_expires_at = NULL WHERE id = ?",
+      "UPDATE user SET telegram_chat_id = ?, temp_token = NULL, temp_token_expires_at = NULL, temp_token_type = NULL WHERE id = ?",
       [chat_id, user.id]
     );
 
