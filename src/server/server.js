@@ -578,7 +578,80 @@ app.get("/api/test", async (req, res) => {
 // Создаем отдельный роутер для защищенных эндпоинтов
 const apiRouter = express.Router();
 
-// Применяем middleware для проверки токена ко всем маршрутам этого роутера
+// --- ОТКРЫТЫЕ ЭНДПОИНТЫ ДЛЯ TELEGRAM-БОТА (БЕЗ АВТОРИЗАЦИИ) ---
+apiRouter.get("/telegram/cashflow-accounts", async (req, res) => {
+  try {
+    const [accounts] = await pool.query(
+      "SELECT * FROM account_cashflow ORDER BY name"
+    );
+    res.json({ success: true, data: accounts });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: error.message });
+  }
+});
+
+apiRouter.get("/telegram/cashflow-categories", async (req, res) => {
+  try {
+    const [categories] = await pool.query(
+      "SELECT * FROM category_cashflow ORDER BY name"
+    );
+    res.json({ success: true, data: categories });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: error.message });
+  }
+});
+
+apiRouter.post("/telegram/add-cashflow", async (req, res) => {
+  const { chatId, operation } = req.body;
+  if (!chatId || !operation) {
+    return res
+      .status(400)
+      .json({ success: false, message: "chatId and operation are required" });
+  }
+  try {
+    const [users] = await pool.query(
+      "SELECT id FROM user WHERE telegram_chat_id = ?",
+      [chatId]
+    );
+    if (users.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found for this chat_id" });
+    }
+    const userId = users[0].id;
+    const [result] = await pool.query(
+      `INSERT INTO cashflow (
+        date, transaction, account_cashflow_idaccount_cashflow, 
+        category_cashflow_idcategory_cashflow, event_idevent, note, income, expense
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        operation.date,
+        operation.transaction || "",
+        operation.account_cashflow_idaccount_cashflow,
+        operation.category_cashflow_idcategory_cashflow,
+        operation.event_idevent || null,
+        operation.note || "",
+        operation.income || 0,
+        operation.expense || 0,
+      ]
+    );
+    res.json({
+      success: true,
+      message: "Operation added successfully",
+      data: { id: result.insertId },
+    });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: error.message });
+  }
+});
+
+// Применяем middleware для проверки токена ко всем остальным маршрутам этого роутера
 apiRouter.use(authenticateToken);
 
 // --- HOME PAGE ---
@@ -2091,79 +2164,6 @@ apiRouter.get("/participants", async (req, res) => {
   } catch (error) {
     console.error("Failed to get participants:", error);
     res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// --- Открытые эндпоинты для Telegram-бота ---
-apiRouter.get("/api/telegram/cashflow-accounts", async (req, res) => {
-  try {
-    const [accounts] = await pool.query(
-      "SELECT * FROM account_cashflow ORDER BY name"
-    );
-    res.json({ success: true, data: accounts });
-  } catch (error) {
-    res
-      .status(500)
-      .json({ success: false, message: "Server error", error: error.message });
-  }
-});
-
-apiRouter.get("/api/telegram/cashflow-categories", async (req, res) => {
-  try {
-    const [categories] = await pool.query(
-      "SELECT * FROM category_cashflow ORDER BY name"
-    );
-    res.json({ success: true, data: categories });
-  } catch (error) {
-    res
-      .status(500)
-      .json({ success: false, message: "Server error", error: error.message });
-  }
-});
-
-apiRouter.post("/api/telegram/add-cashflow", async (req, res) => {
-  const { chatId, operation } = req.body;
-  if (!chatId || !operation) {
-    return res
-      .status(400)
-      .json({ success: false, message: "chatId and operation are required" });
-  }
-  try {
-    const [users] = await pool.query(
-      "SELECT id FROM user WHERE telegram_chat_id = ?",
-      [chatId]
-    );
-    if (users.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found for this chat_id" });
-    }
-    const userId = users[0].id;
-    const [result] = await pool.query(
-      `INSERT INTO cashflow (
-        date, transaction, account_cashflow_idaccount_cashflow, 
-        category_cashflow_idcategory_cashflow, event_idevent, note, income, expense
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        operation.date,
-        operation.transaction || "",
-        operation.account_cashflow_idaccount_cashflow,
-        operation.category_cashflow_idcategory_cashflow,
-        operation.event_idevent || null,
-        operation.note || "",
-        operation.income || 0,
-        operation.expense || 0,
-      ]
-    );
-    res.json({
-      success: true,
-      message: "Operation added successfully",
-      data: { id: result.insertId },
-    });
-  } catch (error) {
-    res
-      .status(500)
-      .json({ success: false, message: "Server error", error: error.message });
   }
 });
 
