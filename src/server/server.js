@@ -292,10 +292,12 @@ app.post(
     const userId = req.user.id;
     try {
       const code = randomBytes(3).toString("hex").toUpperCase(); // e.g., A4F9B1
-      const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // Code expires in 5 minutes
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 10 * 60 * 1000); // Code expires in 10 minutes
 
       console.log(`[GenerateCode] Generating code for user ${userId}: ${code}`);
-      console.log(`[GenerateCode] Expires at: ${expiresAt}`);
+      console.log(`[GenerateCode] Current time: ${now.toISOString()}`);
+      console.log(`[GenerateCode] Expires at: ${expiresAt.toISOString()}`);
 
       await pool.query(
         "UPDATE user SET temp_token = ?, temp_token_expires_at = ?, temp_token_type = 'link' WHERE id = ?",
@@ -387,6 +389,7 @@ app.post("/api/telegram/link-account", async (req, res) => {
 
   try {
     console.log(`[Link] Searching for user with code: ${code}`);
+    console.log(`[Link] Current time: ${new Date().toISOString()}`);
 
     // Сначала проверим, есть ли пользователь с таким кодом вообще
     const [allUsers] = await pool.query(
@@ -394,6 +397,17 @@ app.post("/api/telegram/link-account", async (req, res) => {
       [code]
     );
     console.log(`[Link] All users with this code:`, allUsers);
+
+    if (allUsers.length > 0) {
+      const user = allUsers[0];
+      const now = new Date();
+      const expiresAt = new Date(user.temp_token_expires_at);
+      console.log(
+        `[Link] Time check: now=${now.toISOString()}, expires=${expiresAt.toISOString()}, isExpired=${
+          now > expiresAt
+        }`
+      );
+    }
 
     const [users] = await pool.query(
       "SELECT * FROM user WHERE temp_token = ? AND temp_token_type = 'link' AND temp_token_expires_at > NOW()",
