@@ -8,6 +8,14 @@ const webAppUrl = process.env.WEBAPP_URL;
 const apiUrl = process.env.API_URL || "http://localhost:3000/api";
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || process.env.BOT_TOKEN; // Используем BOT_TOKEN как fallback
 
+// Логируем настройки для отладки
+console.log("=== BOT CONFIGURATION ===");
+console.log("BOT_TOKEN:", token ? "SET" : "NOT SET");
+console.log("WEBAPP_URL:", webAppUrl || "NOT SET");
+console.log("API_URL:", apiUrl);
+console.log("ADMIN_TOKEN:", ADMIN_TOKEN ? "SET" : "NOT SET");
+console.log("=========================");
+
 // Проверка на HTTPS для Web App
 if (webAppUrl && !webAppUrl.startsWith("https://")) {
   logger.logError(
@@ -586,6 +594,12 @@ function sendHelp(msg) {
 
 async function handleLinkCommand(chatId, code) {
   await logger.logCommand(chatId, "link", { code });
+
+  // Логируем URL для отладки
+  console.log(
+    `[Link] Attempting to connect to: ${apiUrl}/telegram/link-account`
+  );
+
   try {
     await axios.post(`${apiUrl}/telegram/link-account`, {
       code,
