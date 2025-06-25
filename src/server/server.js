@@ -299,9 +299,15 @@ app.post(
       console.log(`[GenerateCode] Current time: ${now.toISOString()}`);
       console.log(`[GenerateCode] Expires at: ${expiresAt.toISOString()}`);
 
+      // Используем MySQL формат времени
+      const mysqlExpiresAt = expiresAt
+        .toISOString()
+        .slice(0, 19)
+        .replace("T", " ");
+
       await pool.query(
         "UPDATE user SET temp_token = ?, temp_token_expires_at = ?, temp_token_type = 'link' WHERE id = ?",
-        [code, expiresAt, userId]
+        [code, mysqlExpiresAt, userId]
       );
 
       console.log(`[GenerateCode] Code saved successfully for user ${userId}`);
@@ -410,7 +416,7 @@ app.post("/api/telegram/link-account", async (req, res) => {
     }
 
     const [users] = await pool.query(
-      "SELECT * FROM user WHERE temp_token = ? AND temp_token_type = 'link' AND temp_token_expires_at > NOW()",
+      "SELECT * FROM user WHERE temp_token = ? AND temp_token_type = 'link' AND temp_token_expires_at > UTC_TIMESTAMP()",
       [code]
     );
 
