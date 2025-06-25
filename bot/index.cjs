@@ -109,6 +109,14 @@ bot.onText(/\/link (.+)/, (msg, match) =>
 
 bot.onText(/^[A-Z0-9]{6}$/, (msg) => {
   if (msg.text.startsWith("/")) return;
+
+  // Проверяем, не находится ли пользователь в диалоге
+  const state = userDialogState[msg.chat.id];
+  if (state) {
+    // Если пользователь в диалоге, не обрабатываем как код привязки
+    return;
+  }
+
   handleLinkCommand(msg.chat.id, msg.text);
 });
 
