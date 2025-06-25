@@ -294,13 +294,19 @@ app.post(
       const code = randomBytes(3).toString("hex").toUpperCase(); // e.g., A4F9B1
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // Code expires in 5 minutes
 
+      console.log(`[GenerateCode] Generating code for user ${userId}: ${code}`);
+      console.log(`[GenerateCode] Expires at: ${expiresAt}`);
+
       await pool.query(
         "UPDATE user SET temp_token = ?, temp_token_expires_at = ?, temp_token_type = 'link' WHERE id = ?",
         [code, expiresAt, userId]
       );
 
+      console.log(`[GenerateCode] Code saved successfully for user ${userId}`);
+
       res.json({ success: true, code });
     } catch (error) {
+      console.log(`[GenerateCode] Error:`, error.message);
       res.status(500).json({
         success: false,
         message: "Failed to generate link code",
@@ -381,6 +387,14 @@ app.post("/api/telegram/link-account", async (req, res) => {
 
   try {
     console.log(`[Link] Searching for user with code: ${code}`);
+
+    // Сначала проверим, есть ли пользователь с таким кодом вообще
+    const [allUsers] = await pool.query(
+      "SELECT id, username, temp_token, temp_token_type, temp_token_expires_at FROM user WHERE temp_token = ?",
+      [code]
+    );
+    console.log(`[Link] All users with this code:`, allUsers);
+
     const [users] = await pool.query(
       "SELECT * FROM user WHERE temp_token = ? AND temp_token_type = 'link' AND temp_token_expires_at > NOW()",
       [code]
