@@ -624,8 +624,8 @@ const handleLoginRequest = async (chatId) => {
     );
 
     if (response.success && response.token) {
-      // IMPORTANT: Replace with your actual frontend URL
-      const loginUrl = `http://localhost:5173/login?tg_token=${response.token}`;
+      // Используем webAppUrl вместо хардкода
+      const loginUrl = `${webAppUrl}/login?tg_token=${response.token}`;
 
       const options = {
         reply_markup: JSON.stringify({

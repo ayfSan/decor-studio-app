@@ -173,6 +173,76 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
+// Login with Telegram token endpoint
+app.post("/api/auth/login-telegram", async (req, res) => {
+  const { token } = req.body;
+
+  if (!token) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Token is required" });
+  }
+
+  try {
+    // Find user by token
+    const [users] = await pool.query(
+      "SELECT * FROM user WHERE temp_token = ? AND temp_token_type = 'login' AND temp_token_expires_at > NOW()",
+      [token]
+    );
+
+    if (users.length === 0) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid or expired token" });
+    }
+
+    const user = users[0];
+
+    // Get user roles
+    const [roles] = await pool.query(
+      "SELECT r.name FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE ur.user_id = ?",
+      [user.id]
+    );
+    const userRoles = roles.map((r) => r.name);
+
+    // Clear the token after successful use
+    await pool.query(
+      "UPDATE user SET temp_token = NULL, temp_token_expires_at = NULL, temp_token_type = NULL WHERE id = ?",
+      [user.id]
+    );
+
+    const userPayload = {
+      id: user.id,
+      username: user.username,
+      roles: userRoles,
+      telegram_chat_id: user.telegram_chat_id,
+    };
+
+    const accessToken = jwt.sign(userPayload, process.env.JWT_SECRET, {
+      expiresIn: "8h",
+    });
+
+    res.json({
+      success: true,
+      accessToken,
+      user: {
+        id: user.id,
+        username: user.username,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        roles: userRoles,
+        telegram_chat_id: user.telegram_chat_id,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Server error during login",
+      error: error.message,
+    });
+  }
+});
+
 app.get("/api/auth/me", authenticateToken, async (req, res) => {
   try {
     const [users] = await pool.query(
@@ -339,6 +409,48 @@ app.post("/api/telegram/link-account", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to link account",
+      error: error.message,
+    });
+  }
+});
+
+// Endpoint for Telegram bot to generate login token for linked user
+app.post("/api/telegram/generate-login-token", async (req, res) => {
+  const { chatId } = req.body;
+  if (!chatId) {
+    return res
+      .status(400)
+      .json({ success: false, message: "chatId is required" });
+  }
+
+  try {
+    // Find user by chat_id
+    const [users] = await pool.query(
+      "SELECT id FROM user WHERE telegram_chat_id = ?",
+      [chatId]
+    );
+
+    if (users.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found for this chat_id" });
+    }
+
+    const userId = users[0].id;
+    const token = randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 2 * 60 * 1000); // 2 minutes
+
+    // Store the token
+    await pool.query(
+      "UPDATE user SET temp_token = ?, temp_token_expires_at = ?, temp_token_type = 'login' WHERE id = ?",
+      [token, expiresAt, userId]
+    );
+
+    res.json({ success: true, token });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to generate login token",
       error: error.message,
     });
   }

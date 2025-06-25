@@ -63,6 +63,11 @@ const apiService = {
   login(credentials) {
     return apiClient.post("/auth/login", credentials);
   },
+
+  loginWithTelegramToken(token) {
+    return apiClient.post("/auth/login-telegram", { token });
+  },
+
   /**
    * Устанавливает заголовок Authorization для всех последующих запросов.
    * @param {string} token - JWT токен.

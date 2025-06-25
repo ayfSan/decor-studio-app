@@ -51,15 +51,17 @@
 </template>
 
 <script setup>
-import { ref } from "vue";
-import { useRouter } from "vue-router";
+import { ref, onMounted } from "vue";
+import { useRouter, useRoute } from "vue-router";
 import { useAuthStore } from "@/store/auth.store";
+import apiService from "@/services/api.service";
 
 const username = ref("");
 const password = ref("");
 const loading = ref(false);
 const error = ref("");
 const router = useRouter();
+const route = useRoute();
 const authStore = useAuthStore();
 
 const handleLogin = async () => {
@@ -74,6 +76,44 @@ const handleLogin = async () => {
     loading.value = false;
   }
 };
+
+// Обработка токена Telegram для автоматического входа
+const handleTelegramToken = async (token) => {
+  loading.value = true;
+  error.value = "";
+  try {
+    const response = await apiService.loginWithTelegramToken(token);
+    const { accessToken, user } = response.data;
+
+    // Обновляем состояние хранилища
+    authStore.token = accessToken;
+    authStore.user = user;
+
+    // Сохраняем токен и данные пользователя в localStorage
+    localStorage.setItem("token", accessToken);
+    localStorage.setItem("user", JSON.stringify(user));
+
+    // Устанавливаем заголовок авторизации
+    apiService.setAuthHeader(accessToken);
+
+    // Перенаправляем на главную
+    await router.push("/home");
+  } catch (err) {
+    error.value =
+      "Недействительная ссылка для входа. Попробуйте войти обычным способом.";
+    console.error("Telegram token login failed:", err);
+  } finally {
+    loading.value = false;
+  }
+};
+
+onMounted(() => {
+  // Проверяем, есть ли токен Telegram в URL
+  const tgToken = route.query.tg_token;
+  if (tgToken) {
+    handleTelegramToken(tgToken);
+  }
+});
 </script>
 
 <style scoped>
