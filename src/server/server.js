@@ -2162,6 +2162,22 @@ apiRouter.get("/participants", async (req, res) => {
 // --- START SERVER ---
 app.use("/api", apiRouter);
 
+// Serve static files from the dist directory
+app.use(express.static(path.join(__dirname, "../../dist")));
+
+// Fallback route for SPA - serve index.html for all non-API routes
+app.get("*", (req, res) => {
+  // Skip API routes
+  if (req.path.startsWith("/api/")) {
+    return res
+      .status(404)
+      .json({ success: false, message: "API endpoint not found" });
+  }
+
+  // Serve index.html for all other routes
+  res.sendFile(path.join(__dirname, "../../dist/index.html"));
+});
+
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
