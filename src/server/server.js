@@ -605,6 +605,19 @@ apiRouter.get("/telegram/cashflow-categories", async (req, res) => {
   }
 });
 
+apiRouter.get("/telegram/events", async (req, res) => {
+  try {
+    const [events] = await pool.query(
+      "SELECT idevent, project_name, date FROM event ORDER BY date DESC LIMIT 20"
+    );
+    res.json({ success: true, data: events });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: error.message });
+  }
+});
+
 apiRouter.post("/telegram/add-cashflow", async (req, res) => {
   const { chatId, operation } = req.body;
   if (!chatId || !operation) {

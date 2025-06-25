@@ -315,9 +315,7 @@ async function askForEvent(chatId) {
   logger.info(`[Dialog ${chatId}] Step -> askForEvent`);
 
   try {
-    const { data: response } = await axios.get(
-      `${apiUrl}/users/by-chat-id/${chatId}/events`
-    );
+    const { data: response } = await axios.get(`${apiUrl}/telegram/events`);
 
     const events = response.data;
     const keyboard = [];
