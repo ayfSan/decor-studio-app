@@ -369,10 +369,9 @@ async function askForAccount(chatId) {
   logger.info(`[Dialog ${chatId}] Step -> askForAccount`);
 
   try {
-    const { data: response } = await axios.get(`${apiUrl}/cashflow-accounts`, {
-      headers: { Authorization: `Bearer ${ADMIN_TOKEN}` }, // Assuming protected route
-    });
-
+    const { data: response } = await axios.get(
+      `${apiUrl}/telegram/cashflow-accounts`
+    );
     const accounts = response.data;
     if (!accounts || accounts.length === 0) {
       bot.sendMessage(
@@ -382,7 +381,6 @@ async function askForAccount(chatId) {
       delete userDialogState[chatId];
       return;
     }
-
     const keyboard = accounts.map((acc) => [
       {
         text: `💳 ${acc.name}`,
@@ -390,13 +388,11 @@ async function askForAccount(chatId) {
       },
     ]);
     keyboard.push([{ text: "❌ Отмена", callback_data: "cancel_dialog" }]);
-
     const options = {
       reply_markup: JSON.stringify({
         inline_keyboard: keyboard,
       }),
     };
-
     bot.sendMessage(chatId, "С какого счета/кассы провести операцию?", options);
   } catch (error) {
     logger.error(
@@ -419,12 +415,8 @@ async function askForCategory(chatId) {
 
   try {
     const { data: response } = await axios.get(
-      `${apiUrl}/cashflow-categories`,
-      {
-        headers: { Authorization: `Bearer ${ADMIN_TOKEN}` }, // Assuming protected route
-      }
+      `${apiUrl}/telegram/cashflow-categories`
     );
-
     const categories = response.data;
     if (!categories || categories.length === 0) {
       bot.sendMessage(
@@ -434,7 +426,6 @@ async function askForCategory(chatId) {
       delete userDialogState[chatId];
       return;
     }
-
     const keyboard = categories.map((cat) => [
       {
         text: `📁 ${cat.name}`,
@@ -442,13 +433,11 @@ async function askForCategory(chatId) {
       },
     ]);
     keyboard.push([{ text: "❌ Отмена", callback_data: "cancel_dialog" }]);
-
     const options = {
       reply_markup: JSON.stringify({
         inline_keyboard: keyboard,
       }),
     };
-
     bot.sendMessage(chatId, "Выберите категорию:", options);
   } catch (error) {
     logger.error(
@@ -562,11 +551,10 @@ async function saveOperation(chatId) {
   );
 
   try {
-    // We must use the admin token to perform this operation
-    await axios.post(`${apiUrl}/cashflow`, payload, {
-      headers: { Authorization: `Bearer ${ADMIN_TOKEN}` },
+    await axios.post(`${apiUrl}/telegram/add-cashflow`, {
+      chatId,
+      operation: payload,
     });
-
     bot.sendMessage(chatId, "✅ Операция успешно сохранена!");
   } catch (error) {
     logger.error(
@@ -579,7 +567,6 @@ async function saveOperation(chatId) {
       "❌ Не удалось сохранить операцию. Попробуйте снова или обратитесь к администратору."
     );
   } finally {
-    // Clean up state
     delete userDialogState[chatId];
   }
 }
@@ -640,18 +627,19 @@ async function handleLinkCommand(chatId, code) {
 const handleLoginRequest = async (chatId) => {
   logger.info(`[Login] User ${chatId} requested login link.`);
   try {
-    // Проверяем, привязан ли пользователь
+    // Call the backend to generate a one-time login token
     const { data: response } = await axios.post(
       `${apiUrl}/telegram/generate-login-token`,
       { chatId }
     );
 
-    if (response.success) {
-      // Используем chat_id для автоматического входа
-      const loginUrl = `https://decor-studio-app.onrender.com/login?tg_chat_id=${chatId}`;
+    if (response.success && response.token) {
+      // Используем правильный URL для веб-приложения
+      const loginUrl = `https://decor-studio-app.onrender.com/login?tg_token=${response.token}`;
 
       console.log(`[Login] Generated login URL: ${loginUrl}`);
-      console.log(`[Login] chatId: ${chatId}`);
+      console.log(`[Login] webAppUrl: ${webAppUrl}`);
+      console.log(`[Login] token: ${response.token}`);
 
       const options = {
         reply_markup: JSON.stringify({
@@ -662,11 +650,11 @@ const handleLoginRequest = async (chatId) => {
       };
       bot.sendMessage(
         chatId,
-        "Нажмите кнопку ниже для автоматического входа в веб-приложение:",
+        "Вы получили ссылку для быстрого входа. Она действует 2 минуты и может быть использована только один раз.",
         options
       );
     } else {
-      throw new Error(response.message || "Failed to verify user.");
+      throw new Error(response.message || "Failed to get login token.");
     }
   } catch (error) {
     logger.error(

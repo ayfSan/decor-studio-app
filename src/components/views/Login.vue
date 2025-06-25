@@ -112,46 +112,8 @@ onMounted(() => {
   const tgToken = route.query.tg_token;
   if (tgToken) {
     handleTelegramToken(tgToken);
-    return;
-  }
-
-  // Проверяем, есть ли chat_id в URL для автоматического входа
-  const tgChatId = route.query.tg_chat_id;
-  if (tgChatId) {
-    handleChatIdLogin(tgChatId);
-    return;
   }
 });
-
-// Обработка автоматического входа по chat_id
-const handleChatIdLogin = async (chatId) => {
-  loading.value = true;
-  error.value = "";
-  try {
-    const response = await apiService.loginByChatId(chatId);
-    const { accessToken, user } = response.data;
-
-    // Обновляем состояние хранилища
-    authStore.token = accessToken;
-    authStore.user = user;
-
-    // Сохраняем токен и данные пользователя в localStorage
-    localStorage.setItem("token", accessToken);
-    localStorage.setItem("user", JSON.stringify(user));
-
-    // Устанавливаем заголовок авторизации
-    apiService.setAuthHeader(accessToken);
-
-    // Перенаправляем на главную
-    await router.push("/home");
-  } catch (err) {
-    error.value =
-      "Не удалось выполнить автоматический вход. Попробуйте войти обычным способом.";
-    console.error("Chat ID login failed:", err);
-  } finally {
-    loading.value = false;
-  }
-};
 </script>
 
 <style scoped>

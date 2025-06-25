@@ -510,6 +510,7 @@ app.post("/api/telegram/generate-login-token", async (req, res) => {
 });
 
 // Endpoint to get events for a specific user via their chat_id
+// This should be protected by a secret token from the bot
 app.get("/api/users/by-chat-id/:chatId/events", async (req, res) => {
   const { chatId } = req.params;
   // TODO: Add bot token validation
@@ -549,72 +550,6 @@ app.get("/api/users/by-chat-id/:chatId/events", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Server error while fetching user events",
-      error: error.message,
-    });
-  }
-});
-
-// Эндпоинт для автоматического входа по Telegram chat_id
-app.post("/api/auth/login-by-chat-id", async (req, res) => {
-  const { chatId } = req.body;
-
-  if (!chatId) {
-    return res
-      .status(400)
-      .json({ success: false, message: "chatId is required" });
-  }
-
-  try {
-    // Находим пользователя по chat_id
-    const [users] = await pool.query(
-      "SELECT * FROM user WHERE telegram_chat_id = ?",
-      [chatId]
-    );
-
-    if (users.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found for this chat_id" });
-    }
-
-    const user = users[0];
-
-    // Получаем роли пользователя
-    const [roles] = await pool.query(
-      "SELECT r.name FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE ur.user_id = ?",
-      [user.id]
-    );
-    const userRoles = roles.map((r) => r.name);
-
-    // Создаем JWT токен
-    const userPayload = {
-      id: user.id,
-      username: user.username,
-      roles: userRoles,
-      telegram_chat_id: user.telegram_chat_id,
-    };
-
-    const accessToken = jwt.sign(userPayload, process.env.JWT_SECRET, {
-      expiresIn: "8h",
-    });
-
-    res.json({
-      success: true,
-      accessToken,
-      user: {
-        id: user.id,
-        username: user.username,
-        first_name: user.first_name,
-        last_name: user.last_name,
-        roles: userRoles,
-        telegram_chat_id: user.telegram_chat_id,
-      },
-    });
-  } catch (error) {
-    console.error("Login by chat_id failed:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error during login",
       error: error.message,
     });
   }
@@ -2159,24 +2094,81 @@ apiRouter.get("/participants", async (req, res) => {
   }
 });
 
+// --- Открытые эндпоинты для Telegram-бота ---
+apiRouter.get("/api/telegram/cashflow-accounts", async (req, res) => {
+  try {
+    const [accounts] = await pool.query(
+      "SELECT * FROM account_cashflow ORDER BY name"
+    );
+    res.json({ success: true, data: accounts });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: error.message });
+  }
+});
+
+apiRouter.get("/api/telegram/cashflow-categories", async (req, res) => {
+  try {
+    const [categories] = await pool.query(
+      "SELECT * FROM category_cashflow ORDER BY name"
+    );
+    res.json({ success: true, data: categories });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: error.message });
+  }
+});
+
+apiRouter.post("/api/telegram/add-cashflow", async (req, res) => {
+  const { chatId, operation } = req.body;
+  if (!chatId || !operation) {
+    return res
+      .status(400)
+      .json({ success: false, message: "chatId and operation are required" });
+  }
+  try {
+    const [users] = await pool.query(
+      "SELECT id FROM user WHERE telegram_chat_id = ?",
+      [chatId]
+    );
+    if (users.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found for this chat_id" });
+    }
+    const userId = users[0].id;
+    const [result] = await pool.query(
+      `INSERT INTO cashflow (
+        date, transaction, account_cashflow_idaccount_cashflow, 
+        category_cashflow_idcategory_cashflow, event_idevent, note, income, expense
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        operation.date,
+        operation.transaction || "",
+        operation.account_cashflow_idaccount_cashflow,
+        operation.category_cashflow_idcategory_cashflow,
+        operation.event_idevent || null,
+        operation.note || "",
+        operation.income || 0,
+        operation.expense || 0,
+      ]
+    );
+    res.json({
+      success: true,
+      message: "Operation added successfully",
+      data: { id: result.insertId },
+    });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: error.message });
+  }
+});
+
 // --- START SERVER ---
 app.use("/api", apiRouter);
-
-// Serve static files from the dist directory
-app.use(express.static(path.join(__dirname, "../../dist")));
-
-// Fallback route for SPA - serve index.html for all non-API routes
-app.get("*", (req, res) => {
-  // Skip API routes
-  if (req.path.startsWith("/api/")) {
-    return res
-      .status(404)
-      .json({ success: false, message: "API endpoint not found" });
-  }
-
-  // Serve index.html for all other routes
-  res.sendFile(path.join(__dirname, "../../dist/index.html"));
-});
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
