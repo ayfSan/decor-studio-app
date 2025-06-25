@@ -130,6 +130,23 @@ class Logger {
     });
   }
 
+  // Добавляем стандартные методы логирования для совместимости
+  info(message, ...args) {
+    console.log(`[INFO] ${message}`, ...args);
+  }
+
+  error(message, ...args) {
+    console.error(`[ERROR] ${message}`, ...args);
+  }
+
+  warn(message, ...args) {
+    console.warn(`[WARN] ${message}`, ...args);
+  }
+
+  debug(message, ...args) {
+    console.log(`[DEBUG] ${message}`, ...args);
+  }
+
   // Методы для анализа
   async getUserStats(userId) {
     const userActions = this.actions.filter(
