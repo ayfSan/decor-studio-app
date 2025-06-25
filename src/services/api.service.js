@@ -68,6 +68,10 @@ const apiService = {
     return apiClient.post("/auth/login-telegram", { token });
   },
 
+  loginByChatId(chatId) {
+    return apiClient.post("/auth/login-by-chat-id", { chatId });
+  },
+
   /**
    * Устанавливает заголовок Authorization для всех последующих запросов.
    * @param {string} token - JWT токен.

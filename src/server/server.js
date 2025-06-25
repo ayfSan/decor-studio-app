@@ -510,7 +510,6 @@ app.post("/api/telegram/generate-login-token", async (req, res) => {
 });
 
 // Endpoint to get events for a specific user via their chat_id
-// This should be protected by a secret token from the bot
 app.get("/api/users/by-chat-id/:chatId/events", async (req, res) => {
   const { chatId } = req.params;
   // TODO: Add bot token validation
@@ -550,6 +549,72 @@ app.get("/api/users/by-chat-id/:chatId/events", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Server error while fetching user events",
+      error: error.message,
+    });
+  }
+});
+
+// Эндпоинт для автоматического входа по Telegram chat_id
+app.post("/api/auth/login-by-chat-id", async (req, res) => {
+  const { chatId } = req.body;
+
+  if (!chatId) {
+    return res
+      .status(400)
+      .json({ success: false, message: "chatId is required" });
+  }
+
+  try {
+    // Находим пользователя по chat_id
+    const [users] = await pool.query(
+      "SELECT * FROM user WHERE telegram_chat_id = ?",
+      [chatId]
+    );
+
+    if (users.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found for this chat_id" });
+    }
+
+    const user = users[0];
+
+    // Получаем роли пользователя
+    const [roles] = await pool.query(
+      "SELECT r.name FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE ur.user_id = ?",
+      [user.id]
+    );
+    const userRoles = roles.map((r) => r.name);
+
+    // Создаем JWT токен
+    const userPayload = {
+      id: user.id,
+      username: user.username,
+      roles: userRoles,
+      telegram_chat_id: user.telegram_chat_id,
+    };
+
+    const accessToken = jwt.sign(userPayload, process.env.JWT_SECRET, {
+      expiresIn: "8h",
+    });
+
+    res.json({
+      success: true,
+      accessToken,
+      user: {
+        id: user.id,
+        username: user.username,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        roles: userRoles,
+        telegram_chat_id: user.telegram_chat_id,
+      },
+    });
+  } catch (error) {
+    console.error("Login by chat_id failed:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error during login",
       error: error.message,
     });
   }

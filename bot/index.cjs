@@ -640,19 +640,18 @@ async function handleLinkCommand(chatId, code) {
 const handleLoginRequest = async (chatId) => {
   logger.info(`[Login] User ${chatId} requested login link.`);
   try {
-    // Call the backend to generate a one-time login token
+    // Проверяем, привязан ли пользователь
     const { data: response } = await axios.post(
       `${apiUrl}/telegram/generate-login-token`,
       { chatId }
     );
 
-    if (response.success && response.token) {
-      // Используем правильный URL для веб-приложения
-      const loginUrl = `https://decor-studio-app.onrender.com/login?tg_token=${response.token}`;
+    if (response.success) {
+      // Используем chat_id для автоматического входа
+      const loginUrl = `https://decor-studio-app.onrender.com/login?tg_chat_id=${chatId}`;
 
       console.log(`[Login] Generated login URL: ${loginUrl}`);
-      console.log(`[Login] webAppUrl: ${webAppUrl}`);
-      console.log(`[Login] token: ${response.token}`);
+      console.log(`[Login] chatId: ${chatId}`);
 
       const options = {
         reply_markup: JSON.stringify({
@@ -663,11 +662,11 @@ const handleLoginRequest = async (chatId) => {
       };
       bot.sendMessage(
         chatId,
-        "Вы получили ссылку для быстрого входа. Она действует 2 минуты и может быть использована только один раз.",
+        "Нажмите кнопку ниже для автоматического входа в веб-приложение:",
         options
       );
     } else {
-      throw new Error(response.message || "Failed to get login token.");
+      throw new Error(response.message || "Failed to verify user.");
     }
   } catch (error) {
     logger.error(
