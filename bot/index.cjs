@@ -647,8 +647,12 @@ const handleLoginRequest = async (chatId) => {
     );
 
     if (response.success && response.token) {
-      // Используем webAppUrl вместо хардкода
-      const loginUrl = `${webAppUrl}/login?tg_token=${response.token}`;
+      // Используем правильный URL для веб-приложения
+      const loginUrl = `https://decor-studio-app.onrender.com/login?tg_token=${response.token}`;
+
+      console.log(`[Login] Generated login URL: ${loginUrl}`);
+      console.log(`[Login] webAppUrl: ${webAppUrl}`);
+      console.log(`[Login] token: ${response.token}`);
 
       const options = {
         reply_markup: JSON.stringify({
