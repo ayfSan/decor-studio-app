@@ -370,35 +370,48 @@ app.get("/api/users", authenticateToken, async (req, res) => {
 // В реальном приложении этот эндпоинт нужно защитить (например, секретным токеном бота)
 app.post("/api/telegram/link-account", async (req, res) => {
   const { code, chat_id } = req.body;
+  console.log(`[Link] Received request:`, { code, chat_id });
+
   if (!code || !chat_id) {
+    console.log(`[Link] Missing required fields`);
     return res
       .status(400)
       .json({ success: false, message: "Code and chat_id are required" });
   }
 
   try {
+    console.log(`[Link] Searching for user with code: ${code}`);
     const [users] = await pool.query(
       "SELECT * FROM user WHERE temp_token = ? AND temp_token_type = 'link' AND temp_token_expires_at > NOW()",
       [code]
     );
 
+    console.log(`[Link] Found users:`, users.length);
+    if (users.length > 0) {
+      console.log(`[Link] User found:`, {
+        id: users[0].id,
+        username: users[0].username,
+      });
+    }
+
     if (users.length === 0) {
+      console.log(`[Link] No valid user found for code: ${code}`);
       return res
         .status(404)
         .json({ success: false, message: "Invalid or expired code" });
     }
     const user = users[0];
 
+    console.log(`[Link] Linking chat_id ${chat_id} to user ${user.id}`);
     await pool.query(
       "UPDATE user SET telegram_chat_id = ?, temp_token = NULL, temp_token_expires_at = NULL, temp_token_type = NULL WHERE id = ?",
       [chat_id, user.id]
     );
 
-    // Здесь можно отправить "ответное" сообщение в Telegram, что аккаунт успешно привязан.
-    // (логика отправки сообщения ботом)
-
+    console.log(`[Link] Successfully linked account`);
     res.json({ success: true, message: "Account linked successfully" });
   } catch (error) {
+    console.log(`[Link] Error:`, error.message);
     // Обработка случая, если chat_id уже занят (сработает UNIQUE constraint)
     if (error.code === "ER_DUP_ENTRY") {
       return res.status(409).json({

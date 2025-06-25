@@ -599,17 +599,22 @@ async function handleLinkCommand(chatId, code) {
   console.log(
     `[Link] Attempting to connect to: ${apiUrl}/telegram/link-account`
   );
+  console.log(`[Link] Sending data:`, { code, chat_id: chatId });
 
   try {
-    await axios.post(`${apiUrl}/telegram/link-account`, {
+    const response = await axios.post(`${apiUrl}/telegram/link-account`, {
       code,
       chat_id: chatId,
     });
+    console.log(`[Link] Success response:`, response.data);
     bot.sendMessage(
       chatId,
       "✅ Отлично! Ваш Telegram-аккаунт успешно привязан."
     );
   } catch (error) {
+    console.log(`[Link] Error response:`, error.response?.data);
+    console.log(`[Link] Error status:`, error.response?.status);
+
     let errorMessage = "Произошла неизвестная ошибка.";
     if (error.response) {
       switch (error.response.status) {
